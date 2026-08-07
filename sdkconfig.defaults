@@ -22,10 +22,9 @@ CONFIG_PARTITION_TABLE_CUSTOM=y
 CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/partitions.csv"
 
 # -----------------------------------------------------------------------------
-# PSRAM (8MB on NM-CYD-C5)
+# PSRAM (8MB on NM-CYD-C5; ESP32-C5 supports QUAD mode only)
 # -----------------------------------------------------------------------------
 CONFIG_SPIRAM=y
-CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_USE_CAPS_ALLOC=y
 CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
 
@@ -46,6 +45,12 @@ CONFIG_FREERTOS_UNICORE=n
 # -----------------------------------------------------------------------------
 CONFIG_LOG_DEFAULT_LEVEL_INFO=y
 CONFIG_LOG_MAXIMUM_LEVEL=3
+
+# -----------------------------------------------------------------------------
+# LVGL v9 (managed component)
+# -----------------------------------------------------------------------------
+CONFIG_LV_COLOR_DEPTH_16=y
+CONFIG_LV_FONT_MONTSERRAT_20=y
 
 # -----------------------------------------------------------------------------
 # Compiler

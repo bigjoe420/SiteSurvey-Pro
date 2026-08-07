@@ -12,6 +12,8 @@
 #include "driver/gpio.h"
 
 #include "board_pins.h"
+#include "lvgl_port.h"
+#include "ui_hello.h"
 
 static const char* TAG = "SiteSurvey";
 
@@ -63,11 +65,9 @@ extern "C" void app_main(void)
 
     board_init_gpio();
 
-    ESP_LOGI(TAG, "Board init complete. Ready for Phase 2 (display + LVGL).");
+    ESP_ERROR_CHECK(lvgl_port_init());
+    ui_hello_show();
+    lvgl_port_start_ui_task();
 
-    // Phase 1 placeholder: heartbeat task
-    while (true) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        ESP_LOGI(TAG, "Heartbeat — free heap: %lu bytes", esp_get_free_heap_size());
-    }
+    ESP_LOGI(TAG, "UI pipeline up — free heap: %lu bytes", esp_get_free_heap_size());
 }

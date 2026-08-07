@@ -27,6 +27,11 @@ compile_commands.json
 .ninja_log
 
 # -----------------------------------------------------------------------------
+# ESP-IDF Component Manager (dependencies.lock pins versions; dir is fetched)
+# -----------------------------------------------------------------------------
+managed_components/
+
+# -----------------------------------------------------------------------------
 # LVGL Build Artifacts
 # -----------------------------------------------------------------------------
 # LVGL generated font/image caches

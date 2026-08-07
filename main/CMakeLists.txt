@@ -1,5 +1,9 @@
 idf_component_register(
     SRCS "main.cpp"
-    INCLUDE_DIRS "include"
-    REQUIRES driver esp_wifi nvs_flash
+         "display/display.cpp"
+         "touch/touch.cpp"
+         "ui/lvgl_port.cpp"
+         "ui/ui_hello.cpp"
+    INCLUDE_DIRS "include" "display" "touch" "ui"
+    REQUIRES esp_driver_gpio esp_driver_spi esp_driver_uart esp_driver_i2c esp_lcd esp_timer esp_wifi nvs_flash lvgl__lvgl
 )

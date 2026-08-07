@@ -7,6 +7,9 @@
 // =============================================================================
 
 #include <stdint.h>
+#include "driver/gpio.h"
+#include "hal/uart_types.h"
+#include "hal/i2c_types.h"
 
 // =============================================================================
 // Shared SPI Bus (FSPI/SPI2)
