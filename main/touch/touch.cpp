@@ -40,11 +40,16 @@ static uint16_t read_averaged(uint8_t cmd)
     return acc / 3;
 }
 
-static int16_t map_clamped(int32_t v, int32_t in_min, int32_t in_max, int16_t out_max)
+// Linear map between two measured anchors, clamped to [0, out_max]
+static int16_t map_anchored(int32_t v, int32_t raw_hi, int32_t raw_lo,
+                            int16_t out_lo, int16_t out_hi, int16_t out_max)
 {
-    if (v <= in_min) return 0;
-    if (v >= in_max) return out_max;
-    return (int16_t)((v - in_min) * out_max / (in_max - in_min));
+    if (v >= raw_hi) return out_lo;
+    if (v <= raw_lo) return out_hi;
+    int32_t r = out_lo + (raw_hi - v) * (out_hi - out_lo) / (raw_hi - raw_lo);
+    if (r < 0) return 0;
+    if (r > out_max) return out_max;
+    return (int16_t)r;
 }
 
 esp_err_t touch_init(void)
@@ -61,23 +66,28 @@ esp_err_t touch_init(void)
     return ESP_OK;
 }
 
-bool touch_read(int16_t* x, int16_t* y)
+bool touch_read_raw(uint16_t* raw_x, uint16_t* raw_y)
 {
     if (read_channel(CMD_Z1) < PRESS_THRESHOLD) {
         return false;
     }
+    *raw_x = read_averaged(CMD_X);
+    *raw_y = read_averaged(CMD_Y);
+    return true;
+}
 
-    uint16_t raw_x = read_averaged(CMD_X);
-    uint16_t raw_y = read_averaged(CMD_Y);
+bool touch_read(int16_t* x, int16_t* y)
+{
+    uint16_t raw_x, raw_y;
+    if (!touch_read_raw(&raw_x, &raw_y)) {
+        return false;
+    }
 
-    // Factory calibration (Bruce firmware): X 225..3413, Y 403..3334
-    int16_t sx = map_clamped(raw_x, SSP_TOUCH_CAL_0, SSP_TOUCH_CAL_1, SSP_TFT_WIDTH);
-    int16_t sy = map_clamped(raw_y, SSP_TOUCH_CAL_2, SSP_TOUCH_CAL_3, SSP_TFT_HEIGHT);
-
-    // Rotation 3 inverts both axes relative to the raw touch frame
-    *x = (int16_t)(SSP_TFT_WIDTH - sx);
-    if (*x >= SSP_TFT_WIDTH) *x = SSP_TFT_WIDTH - 1;
-    *y = (int16_t)(SSP_TFT_HEIGHT - sy);
-    if (*y >= SSP_TFT_HEIGHT) *y = SSP_TFT_HEIGHT - 1;
+    // Measured mapping (board_pins.h): raw Y -> screen X, raw X -> screen Y,
+    // both channels decrease as the screen coordinate increases
+    *x = map_anchored(raw_y, SSP_TOUCH_RAWY_LEFT, SSP_TOUCH_RAWY_RIGHT,
+                      SSP_TOUCH_ANCHOR_MIN, SSP_TOUCH_ANCHOR_MAX_X, SSP_TFT_WIDTH - 1);
+    *y = map_anchored(raw_x, SSP_TOUCH_RAWX_TOP, SSP_TOUCH_RAWX_BOTTOM,
+                      SSP_TOUCH_ANCHOR_MIN, SSP_TOUCH_ANCHOR_MAX_Y, SSP_TFT_HEIGHT - 1);
     return true;
 }

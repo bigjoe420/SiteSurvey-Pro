@@ -26,7 +26,7 @@ void ui_hello_show(void)
     lv_obj_align(title, LV_ALIGN_CENTER, 0, -30);
 
     lv_obj_t* hint = lv_label_create(scr);
-    lv_label_set_text(hint, "UI pipeline OK — tap the screen");
+    lv_label_set_text(hint, "UI pipeline OK - tap the screen");
     lv_obj_set_style_text_color(hint, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_obj_align(hint, LV_ALIGN_CENTER, 0, 0);
 

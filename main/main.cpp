@@ -69,5 +69,5 @@ extern "C" void app_main(void)
     ui_hello_show();
     lvgl_port_start_ui_task();
 
-    ESP_LOGI(TAG, "UI pipeline up — free heap: %lu bytes", esp_get_free_heap_size());
+    ESP_LOGI(TAG, "UI pipeline up - free heap: %lu bytes", esp_get_free_heap_size());
 }

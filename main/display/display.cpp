@@ -52,7 +52,8 @@ esp_err_t display_init(esp_lcd_panel_handle_t* out_panel)
 
     // Driver init emits SLPOUT with its own 120 ms settle delay
     ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "panel init failed");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(panel, true), TAG, "invert failed");
+    // This panel's native polarity is correct as-is; no INVON needed
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(panel, false), TAG, "invert failed");
     // Rotation 3: swap axes into landscape, then flip vertically
     ESP_RETURN_ON_ERROR(esp_lcd_panel_swap_xy(panel, true), TAG, "swap_xy failed");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_mirror(panel, false, true), TAG, "mirror failed");

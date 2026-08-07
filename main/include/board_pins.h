@@ -39,12 +39,20 @@
 #define SSP_TOUCH_SPI_FREQ_HZ   2500000UL   // 2.5 MHz max for XPT2046
 #define SSP_TOUCH_IRQ   GPIO_NUM_NC         // Not connected on NM-CYD-C5
 
-// Touch calibration data (from Bruce firmware)
-#define SSP_TOUCH_CAL_0 225
-#define SSP_TOUCH_CAL_1 3413
-#define SSP_TOUCH_CAL_2 403
-#define SSP_TOUCH_CAL_3 3334
-#define SSP_TOUCH_CAL_4 1
+// Touch calibration — MEASURED on-device 2026-08-07 via 5-point raw capture.
+// The resistive film is rotated 90 deg vs the XPT2046 channel naming:
+//   raw Y channel (0x90) tracks HORIZONTAL: 3450 at left  -> 516 at right
+//   raw X channel (0xD0) tracks VERTICAL:   3399 at top   -> 713 at bottom
+// Anchors are the calibration dots at screen (24,24)..(296,216); the map
+// extrapolates ~24 px beyond them to the panel edge. Supersedes the Bruce
+// firmware array {225, 3413, 403, 3334, 1}, which assumed unswapped channels.
+#define SSP_TOUCH_RAWY_LEFT    3450
+#define SSP_TOUCH_RAWY_RIGHT    516
+#define SSP_TOUCH_RAWX_TOP     3399
+#define SSP_TOUCH_RAWX_BOTTOM   713
+#define SSP_TOUCH_ANCHOR_MIN     24
+#define SSP_TOUCH_ANCHOR_MAX_X  296
+#define SSP_TOUCH_ANCHOR_MAX_Y  216
 
 // =============================================================================
 // Micro SD Card (SPI shared bus)

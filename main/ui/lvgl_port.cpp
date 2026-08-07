@@ -63,6 +63,9 @@ esp_err_t lvgl_port_init(void)
     lv_init();
 
     s_disp = lv_display_create(SSP_TFT_WIDTH, SSP_TFT_HEIGHT);
+    // ST7789 takes RGB565 MSB-first over SPI; render pre-swapped so flush
+    // can hand the buffer to esp_lcd untouched
+    lv_display_set_color_format(s_disp, LV_COLOR_FORMAT_RGB565_SWAPPED);
     lv_display_set_buffers(s_disp, buf1, buf2, BUF_SIZE, LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(s_disp, flush_cb);
 
