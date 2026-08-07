@@ -14,6 +14,7 @@
 #include "board_pins.h"
 #include "lvgl_port.h"
 #include "ui_hello.h"
+#include "scan_engine.h"
 
 static const char* TAG = "SiteSurvey";
 
@@ -70,4 +71,21 @@ extern "C" void app_main(void)
     lvgl_port_start_ui_task();
 
     ESP_LOGI(TAG, "UI pipeline up - free heap: %lu bytes", esp_get_free_heap_size());
+
+    ESP_ERROR_CHECK(scan_engine_init());
+    scan_engine_start_task();
+
+    // main_task event loop: drains scan_queue and logs each AP as it arrives
+    QueueHandle_t scan_queue = scan_engine_queue();
+    ScanResult_t ap;
+    while (true) {
+        xQueueReceive(scan_queue, &ap, portMAX_DELAY);
+        ESP_LOGI(TAG, "%-32s %02X:%02X:%02X:%02X:%02X:%02X %s ch%-3u %4d dBm %c %s",
+                 (const char*)ap.ssid,
+                 ap.bssid[0], ap.bssid[1], ap.bssid[2], ap.bssid[3], ap.bssid[4], ap.bssid[5],
+                 ap.channel <= 14 ? "2.4G" : "5G ",
+                 ap.channel, ap.rssi,
+                 SSP_RSSI_TIER_CHAR[ap.severity],
+                 scan_engine_auth_str(ap.authmode));
+    }
 }
