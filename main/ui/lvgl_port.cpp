@@ -19,11 +19,28 @@ static constexpr size_t BUF_SIZE = SSP_TFT_WIDTH * BUF_ROWS * sizeof(uint16_t);
 static esp_lcd_panel_handle_t s_panel;
 static lv_display_t* s_disp;
 
+// Backlight is held off until LVGL's first full frame is physically on the
+// glass, so the panel never lights up on unfinished pixels
+static bool s_bl_on;
+
+static void backlight_on_once(const char* why)
+{
+    if (s_bl_on) return;
+    s_bl_on = true;
+    display_set_backlight(true);
+    ESP_LOGI(TAG, "backlight on: %s", why);
+}
+
 static void flush_cb(lv_display_t* disp, const lv_area_t* area, uint8_t* px_map)
 {
     esp_lcd_panel_draw_bitmap(s_panel, area->x1, area->y1,
                               area->x2 + 1, area->y2 + 1, px_map);
     lv_display_flush_ready(disp);
+    // The last chunk of a render cycle completes the frame on the glass;
+    // the very first one is our cue to light the backlight
+    if (lv_display_flush_is_last(disp)) {
+        backlight_on_once("first full frame drawn");
+    }
 }
 
 static void touch_read_cb(lv_indev_t* indev, lv_indev_data_t* data)
@@ -47,6 +64,11 @@ static void ui_task(void*)
 {
     while (true) {
         lv_timer_handler();
+        // Defensive fallback: never ship a dark screen if the first-frame
+        // path somehow never fires (should not happen in practice)
+        if (!s_bl_on && lv_tick_get() > 2500) {
+            backlight_on_once("2.5 s fallback (first-frame signal missing)");
+        }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }

@@ -4,8 +4,10 @@
 // =============================================================================
 
 #include <cstdio>
+#include <cstdlib>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "freertos/queue.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "nvs_flash.h"
@@ -14,7 +16,9 @@
 #include "board_pins.h"
 #include "lvgl_port.h"
 #include "ui_hello.h"
+#include "ui_splash.h"
 #include "scan_engine.h"
+#include "sensors.h"
 
 static const char* TAG = "SiteSurvey";
 
@@ -57,6 +61,11 @@ extern "C" void app_main(void)
     ESP_LOGI(TAG, "SiteSurvey Pro booting...");
     ESP_LOGI(TAG, "Target: ESP32-C5 | Flash: 16MB | PSRAM: 8MB");
 
+    // GPIO first, before anything else: clamps the backlight LOW (it floats
+    // ON during ROM/bootloader via the board's BL circuit) and parks all SPI
+    // CS lines HIGH at the earliest instruction firmware controls
+    board_init_gpio();
+
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         ESP_ERROR_CHECK(nvs_flash_erase());
@@ -64,10 +73,12 @@ extern "C" void app_main(void)
     }
     ESP_ERROR_CHECK(ret);
 
-    board_init_gpio();
-
     ESP_ERROR_CHECK(lvgl_port_init());
-    ui_hello_show();
+
+    // Splash owns the display first: it masks Wi-Fi/sensor warm-up and only
+    // releases to the home screen when both readiness gates clear.
+    lv_obj_t* home = ui_hello_create();
+    ui_splash_show(home);
     lvgl_port_start_ui_task();
 
     ESP_LOGI(TAG, "UI pipeline up - free heap: %lu bytes", esp_get_free_heap_size());
@@ -75,17 +86,63 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(scan_engine_init());
     scan_engine_start_task();
 
-    // main_task event loop: drains scan_queue and logs each AP as it arrives
+    ESP_ERROR_CHECK(sensors_init());
+    sensors_start_task();
+
+    // main_task event loop: drains scan_queue + env_queue via a
+    // queue set and logs each AP / sensor snapshot
     QueueHandle_t scan_queue = scan_engine_queue();
-    ScanResult_t ap;
+    QueueHandle_t env_queue = sensors_queue();
+    QueueSetHandle_t qs = xQueueCreateSet(16 + 8);
+    ESP_ERROR_CHECK(qs ? ESP_OK : ESP_ERR_NO_MEM);
+    ESP_ERROR_CHECK(xQueueAddToSet(scan_queue, qs) == pdPASS ? ESP_OK : ESP_FAIL);
+    ESP_ERROR_CHECK(xQueueAddToSet(env_queue, qs) == pdPASS ? ESP_OK : ESP_FAIL);
+
+    bool scan_ready = false;
+    bool env_ready = false;
     while (true) {
-        xQueueReceive(scan_queue, &ap, portMAX_DELAY);
-        ESP_LOGI(TAG, "%-32s %02X:%02X:%02X:%02X:%02X:%02X %s ch%-3u %4d dBm %c %s",
-                 (const char*)ap.ssid,
-                 ap.bssid[0], ap.bssid[1], ap.bssid[2], ap.bssid[3], ap.bssid[4], ap.bssid[5],
-                 ap.channel <= 14 ? "2.4G" : "5G ",
-                 ap.channel, ap.rssi,
-                 SSP_RSSI_TIER_CHAR[ap.severity],
-                 scan_engine_auth_str(ap.authmode));
+        QueueSetMemberHandle_t member = xQueueSelectFromSet(qs, portMAX_DELAY);
+        if (member == scan_queue) {
+            ScanResult_t ap;
+            xQueueReceive(member, &ap, 0);
+            ESP_LOGI(TAG, "%-32s %02X:%02X:%02X:%02X:%02X:%02X %s ch%-3u %4d dBm %c %s",
+                     (const char*)ap.ssid,
+                     ap.bssid[0], ap.bssid[1], ap.bssid[2], ap.bssid[3], ap.bssid[4], ap.bssid[5],
+                     ap.channel <= 14 ? "2.4G" : "5G ",
+                     ap.channel, ap.rssi,
+                     SSP_RSSI_TIER_CHAR[ap.severity],
+                     scan_engine_auth_str(ap.authmode));
+            if (!scan_ready) {
+                scan_ready = true;
+                ui_splash_notify_scan_ready();
+            }
+        } else if (member == env_queue) {
+            EnvSnapshot_t snap;
+            xQueueReceive(member, &snap, 0);
+            ui_hello_post_env(&snap, sensors_bme680_present());
+            if (snap.env_valid) {
+                int32_t t = snap.env.temp_c_x100;
+                ESP_LOGI(TAG, "env: %ld.%02ld C  %lu.%02lu %%RH  %lu Pa  gas %lu ohm",
+                         (long)(t / 100), (long)(labs(t) % 100),
+                         (unsigned long)(snap.env.hum_x100 / 100),
+                         (unsigned long)(snap.env.hum_x100 % 100),
+                         (unsigned long)snap.env.press_pa, (unsigned long)snap.env.gas_ohm);
+            }
+            if (snap.gps.fix_valid) {
+                ESP_LOGI(TAG, "gps: fix q=%u sats=%u lat=%ld.%07ld lon=%ld.%07ld utc=%06lu",
+                         snap.gps.fix_quality, snap.gps.sats,
+                         (long)(snap.gps.lat_e7 / 10000000), (long)(labs(snap.gps.lat_e7) % 10000000),
+                         (long)(snap.gps.lon_e7 / 10000000), (long)(labs(snap.gps.lon_e7) % 10000000),
+                         (unsigned long)snap.gps.utc_hhmmss);
+            } else {
+                ESP_LOGI(TAG, "gps: no fix (sats=%u utc=%06lu) nmea ok=%lu bad=%lu",
+                         snap.gps.sats, (unsigned long)snap.gps.utc_hhmmss,
+                         (unsigned long)snap.gps.sentences_ok, (unsigned long)snap.gps.sentences_bad);
+            }
+            if (!env_ready && (snap.env_valid || !sensors_bme680_present())) {
+                env_ready = true;
+                ui_splash_notify_env_ready();
+            }
+        }
     }
 }

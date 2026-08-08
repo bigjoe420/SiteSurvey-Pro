@@ -5,7 +5,11 @@ idf_component_register(
          "ui/lvgl_port.cpp"
          "ui/ui_hello.cpp"
          "ui/ui_calib.cpp"
+         "ui/ui_splash.cpp"
          "scan_engine/scan_engine.cpp"
-    INCLUDE_DIRS "include" "display" "touch" "ui" "scan_engine"
+         "sensors/bme680.cpp"
+         "sensors/gps.cpp"
+         "sensors/sensors.cpp"
+    INCLUDE_DIRS "include" "display" "touch" "ui" "scan_engine" "sensors"
     REQUIRES esp_driver_gpio esp_driver_spi esp_driver_uart esp_driver_i2c esp_lcd esp_timer esp_event esp_netif esp_wifi nvs_flash lvgl__lvgl
 )

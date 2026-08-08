@@ -61,8 +61,10 @@
 
 // =============================================================================
 // GPS Module (LP-UART, P5 connector)
+// GPIO 4/5 are fixed-function LP-IO pins (soc/esp32c5 uart_pins.h:
+// LP_U0RXD=GPIO4, LP_U0TXD=GPIO5) — never reconfigure as GPIO.
 // =============================================================================
-#define SSP_GPS_UART    UART_NUM_1
+#define SSP_GPS_UART    LP_UART_NUM_0
 #define SSP_GPS_TX      GPIO_NUM_5      // ESP TX -> GPS RX
 #define SSP_GPS_RX      GPIO_NUM_4      // GPS TX -> ESP RX
 #define SSP_GPS_BAUD    9600

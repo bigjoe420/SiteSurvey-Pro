@@ -57,10 +57,24 @@ esp_err_t display_init(esp_lcd_panel_handle_t* out_panel)
     // Rotation 3: swap axes into landscape, then flip vertically
     ESP_RETURN_ON_ERROR(esp_lcd_panel_swap_xy(panel, true), TAG, "swap_xy failed");
     ESP_RETURN_ON_ERROR(esp_lcd_panel_mirror(panel, false, true), TAG, "mirror failed");
+
+    // ST7789 GRAM powers up with random content. With the display still off,
+    // paint the whole panel black so the first visible frame is clean —
+    // otherwise DISPON+backlight expose that "rainbow snow" and LVGL's
+    // partial flushes chase it down the screen row by row.
+    // One row per transaction keeps this stack-only (640 B), ~100 ms once.
+    uint16_t black_row[SSP_TFT_WIDTH] = {};
+    for (int y = 0; y < SSP_TFT_HEIGHT; y++) {
+        ESP_RETURN_ON_ERROR(
+            esp_lcd_panel_draw_bitmap(panel, 0, y, SSP_TFT_WIDTH, y + 1, black_row),
+            TAG, "GRAM clear failed at row %d", y);
+    }
+
     ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "DISPON failed");
 
-    // Backlight comes up only after DISPON to avoid white-flash on boot
-    display_set_backlight(true);
+    // Backlight stays OFF here on purpose: lvgl_port lights it only after
+    // LVGL's first full frame is on the glass, so the panel never reveals
+    // anything but finished pixels.
 
     *out_panel = panel;
     ESP_LOGI(TAG, "ST7789 up: %dx%d landscape, SPI2 @ %lu MHz",

@@ -27,6 +27,9 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/partitions.csv"
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_USE_CAPS_ALLOC=y
 CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
+# Memtest costs ~1.8 s at boot (8 MB @ 40 MHz) and the pre-app backlight
+# window is user-visible — keep it off for a clean boot
+# CONFIG_SPIRAM_MEMTEST is not set
 
 # -----------------------------------------------------------------------------
 # Wi-Fi
