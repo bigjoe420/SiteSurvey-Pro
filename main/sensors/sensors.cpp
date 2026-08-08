@@ -18,6 +18,28 @@ static QueueHandle_t s_queue;
 static bool s_bme680_present;
 static uint32_t s_drops;
 
+// Line-level sanity before the bus is claimed: with internal pull-ups and no
+// device driving, SDA/SCL must idle HIGH. A stuck-LOW line means a wiring
+// fault (short / crossed JST crimps); both HIGH with a silent sweep points at
+// the module itself (floating CSB -> SPI mode, floating SDO, or dead part).
+static void i2c_line_check(void)
+{
+    gpio_config_t io = {};
+    io.pin_bit_mask = (1ULL << SSP_I2C_SDA) | (1ULL << SSP_I2C_SCL);
+    io.mode = GPIO_MODE_INPUT;
+    io.pull_up_en = GPIO_PULLUP_ENABLE;
+    gpio_config(&io);
+    vTaskDelay(pdMS_TO_TICKS(2));  // let the pull-ups settle
+
+    int sda = gpio_get_level(SSP_I2C_SDA);
+    int scl = gpio_get_level(SSP_I2C_SCL);
+    if (sda && scl) {
+        ESP_LOGI(TAG, "i2c lines idle HIGH (SDA=%d SCL=%d) - wiring ok; silence implicates the module", sda, scl);
+    } else {
+        ESP_LOGW(TAG, "i2c line stuck LOW (SDA=%d SCL=%d) - check CN1 crimps for short/cross", sda, scl);
+    }
+}
+
 // Sweeps the whole 7-bit address space once at boot
 // so a silent / mis-wired / wrong-part module shows up in the log. A probe is
 // address-phase + STOP only — harmless to any device on the bus.
@@ -75,6 +97,8 @@ esp_err_t sensors_init(void)
     bus_cfg.clk_source = I2C_CLK_SRC_DEFAULT;
     bus_cfg.glitch_ignore_cnt = 7;
     bus_cfg.flags.enable_internal_pullup = true;  // CN1 may run without the sensor attached
+
+    i2c_line_check();
 
     i2c_master_bus_handle_t bus;
     ESP_RETURN_ON_ERROR(i2c_new_master_bus(&bus_cfg, &bus), TAG, "i2c bus init failed");
