@@ -20,7 +20,7 @@ static esp_lcd_panel_handle_t s_panel;
 static lv_display_t* s_disp;
 
 // Backlight is held off until LVGL's first full frame is physically on the
-// glass, so the panel never lights up on unfinished pixels
+// glass, so the panel never lights up on unfinished pixels.
 static bool s_bl_on;
 
 static void backlight_on_once(const char* why)

@@ -3,8 +3,8 @@
 #include "lvgl.h"
 #include "sensors.h"
 
-// Builds the home screen on its own screen object (NOT loaded —
-// the boot splash owns the display until its gates clear). All objects are
+// Builds the home screen on its own screen object (NOT loaded — the boot
+// splash owns the display until its gates clear). All objects are
 // created once at init; the touch readout and env readout update at runtime.
 lv_obj_t* ui_hello_create(void);
 

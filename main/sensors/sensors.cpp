@@ -40,9 +40,9 @@ static void i2c_line_check(void)
     }
 }
 
-// Sweeps the whole 7-bit address space once at boot
-// so a silent / mis-wired / wrong-part module shows up in the log. A probe is
-// address-phase + STOP only — harmless to any device on the bus.
+// Sweeps the whole 7-bit address space once at boot so a silent, mis-wired,
+// or wrong-part module shows up in the log. A probe is address-phase + STOP
+// only — harmless to any device on the bus.
 static void i2c_bus_scan(i2c_master_bus_handle_t bus)
 {
     int found = 0;

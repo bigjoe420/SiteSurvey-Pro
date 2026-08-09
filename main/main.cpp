@@ -76,7 +76,8 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(lvgl_port_init());
 
     // Splash owns the display first: it masks Wi-Fi/sensor warm-up and only
-    // releases to the home screen when both readiness gates clear.
+    // releases to the home screen when both readiness gates clear. LVGL calls
+    // stay in ui_task context; gate flags cross tasks as plain bools.
     lv_obj_t* home = ui_hello_create();
     ui_splash_show(home);
     lvgl_port_start_ui_task();
@@ -89,8 +90,8 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(sensors_init());
     sensors_start_task();
 
-    // main_task event loop: drains scan_queue + env_queue via a
-    // queue set and logs each AP / sensor snapshot
+    // main_task event loop: drains scan_queue + env_queue via a queue set and
+    // logs each AP / sensor snapshot as it arrives
     QueueHandle_t scan_queue = scan_engine_queue();
     QueueHandle_t env_queue = sensors_queue();
     QueueSetHandle_t qs = xQueueCreateSet(16 + 8);

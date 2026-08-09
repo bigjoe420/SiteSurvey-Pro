@@ -129,8 +129,8 @@ void gps_poll(GpsState* st)
     int n = uart_read_bytes(SSP_GPS_UART, buf, sizeof(buf), pdMS_TO_TICKS(100));
     if (n > 0) {
         st->rx_bytes += (uint32_t)n;
-        // Hex+ASCII dump of the first few RX chunks: tells
-        // a silent or mis-bauded module apart from a floating RX pin
+        // Hex+ASCII dump of the first few RX chunks: tells a silent or
+        // mis-bauded module apart from a floating RX pin
         static int s_dump_budget = 4;
         if (s_dump_budget > 0) {
             s_dump_budget--;

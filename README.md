@@ -149,7 +149,7 @@ SiteSurvey Pro/
 │   ├── scan_engine/            # Wi-Fi active scan logic
 │   └── sensors/                # BME680 + GPS drivers
 ├── docs/                       # Hardware docs (project-isolated)
-├── tools/                      # Diagnostic scripts
+└── tools/                      # Diagnostic scripts
 ```
 
 ## License
