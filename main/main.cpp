@@ -15,7 +15,7 @@
 
 #include "board_pins.h"
 #include "lvgl_port.h"
-#include "ui_hello.h"
+#include "ui_env.h"
 #include "ui_splash.h"
 #include "scan_engine.h"
 #include "sensors.h"
@@ -79,7 +79,7 @@ extern "C" void app_main(void)
     // Splash owns the display first: it masks Wi-Fi/sensor warm-up and only
     // releases to the home screen when both readiness gates clear. LVGL calls
     // stay in ui_task context; gate flags cross tasks as plain bools.
-    lv_obj_t* home = ui_hello_create();
+    lv_obj_t* home = ui_env_create();
     ui_splash_show(home);
     lvgl_port_start_ui_task();
 
@@ -124,7 +124,7 @@ extern "C" void app_main(void)
         } else if (member == env_queue) {
             EnvSnapshot_t snap;
             xQueueReceive(member, &snap, 0);
-            ui_hello_post_env(&snap, sensors_bme680_present());
+            ui_env_post_env(&snap, sensors_bme680_present());
             if (snap.env_valid) {
                 int32_t t = snap.env.temp_c_x100;
                 ESP_LOGI(TAG, "env: %ld.%02ld C  %lu.%02lu %%RH  %lu Pa  gas %lu ohm",
