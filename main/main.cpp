@@ -19,6 +19,7 @@
 #include "ui_splash.h"
 #include "scan_engine.h"
 #include "sensors.h"
+#include "sd_card.h"
 
 static const char* TAG = "SiteSurvey";
 
@@ -89,6 +90,9 @@ extern "C" void app_main(void)
 
     ESP_ERROR_CHECK(sensors_init());
     sensors_start_task();
+
+    // Non-fatal: an absent card only means no session logging this boot
+    sd_card_init();
 
     // main_task event loop: drains scan_queue + env_queue via a queue set and
     // logs each AP / sensor snapshot as it arrives
