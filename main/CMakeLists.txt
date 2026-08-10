@@ -4,6 +4,7 @@ idf_component_register(
          "touch/touch.cpp"
          "ui/lvgl_port.cpp"
          "ui/ui_env.cpp"
+         "ui/ui_spin3d.cpp"
          "ui/ui_calib.cpp"
          "ui/ui_splash.cpp"
          "scan_engine/scan_engine.cpp"

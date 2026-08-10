@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include "ui_spin3d.h"
 
 // -----------------------------------------------------------------------------
 // Gauge model
@@ -21,9 +22,11 @@ typedef struct {
     lv_color_t grad_a = {}, grad_b = {};
     int32_t min_x100 = 0, max_x100 = 0;
     void (*fmt)(char* buf, size_t n, int32_t v_x100) = nullptr;
+    spin3d_shape_t shape = SPIN_CUBE;
 
     lv_obj_t* value_label = nullptr;
     lv_obj_t* marker = nullptr;
+    Spin3D* spin = nullptr;
     int track_x = 0, track_w = 0;
     int32_t shown_x100 = 0;
     bool has_value = false;
@@ -59,14 +62,14 @@ static void fmt_press(char* b, size_t n, int32_t v) { snprintf(b, n, "%ld hPa", 
 
 static Gauge s_gauges[] = {
     { .name = "TEMP",     .bands = TEMP_BANDS, .nbands = 4,
-      .min_x100 = 3200,  .max_x100 = 12200,  .fmt = fmt_temp  },
+      .min_x100 = 3200,  .max_x100 = 12200,  .fmt = fmt_temp,  .shape = SPIN_OCTA  },
     { .name = "HUMIDITY", .bands = HUM_BANDS,  .nbands = 4,
-      .min_x100 = 0,     .max_x100 = 10000,  .fmt = fmt_hum   },
+      .min_x100 = 0,     .max_x100 = 10000,  .fmt = fmt_hum,   .shape = SPIN_TETRA },
     { .name = "PRESSURE", .bands = nullptr,    .nbands = 0,
       .grad_a = lv_color_hex(0x1DE9B6), .grad_b = lv_color_hex(0x2979FF),
-      .min_x100 = 95000, .max_x100 = 105000, .fmt = fmt_press },
+      .min_x100 = 95000, .max_x100 = 105000, .fmt = fmt_press, .shape = SPIN_ICOSA },
     { .name = "AIR (VOC)", .bands = VOC_BANDS, .nbands = 3,
-      .min_x100 = 0,     .max_x100 = 15000,  .fmt = fmt_voc   },
+      .min_x100 = 0,     .max_x100 = 15000,  .fmt = fmt_voc,   .shape = SPIN_CUBE  },
 };
 static constexpr int N_GAUGES = sizeof(s_gauges) / sizeof(s_gauges[0]);
 
@@ -145,6 +148,7 @@ static void gauge_set(Gauge* g, int32_t v_x100)
         lv_anim_start(&a);
     }
     lv_obj_set_style_text_color(g->value_label, band_color(g, frac), 0);
+    ui_spin3d_set(g->spin, frac, band_color(g, frac));
 }
 
 static void gauge_clear(Gauge* g)
@@ -152,6 +156,7 @@ static void gauge_clear(Gauge* g)
     g->has_value = false;
     lv_label_set_text(g->value_label, "--");
     lv_obj_set_style_text_color(g->value_label, lv_color_hex(0x757575), 0);
+    ui_spin3d_set(g->spin, 0.0f, lv_color_hex(0x424242));
 }
 
 static void env_refresh(lv_timer_t*)
@@ -198,6 +203,8 @@ static void build_gauge(lv_obj_t* scr, Gauge* g, int x, int y)
     lv_obj_set_style_text_font(g->value_label, &lv_font_montserrat_20, 0);
     lv_obj_set_style_text_color(g->value_label, lv_color_hex(0x757575), 0);
     lv_obj_set_pos(g->value_label, x, y + 16);
+
+    g->spin = ui_spin3d_create(scr, x + 96, y + 4, 40, g->shape);
 
     lv_obj_t* track = lv_obj_create(scr);
     lv_obj_remove_flag(track, LV_OBJ_FLAG_SCROLLABLE);
