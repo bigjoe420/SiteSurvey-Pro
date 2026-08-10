@@ -35,20 +35,20 @@ static void env_refresh(lv_timer_t*)
     if (!present) {
         lv_label_set_text(s_env_status, "BME680: offline (CN1)");
         lv_obj_set_style_text_color(s_env_status, lv_palette_main(LV_PALETTE_RED), 0);
-        lv_label_set_text(s_env_data, "--.-- C    --.- %RH\n------- Pa    ------ ohm");
+        lv_label_set_text(s_env_data, "--.-- F    --.- %RH\n------- Pa    ------ ohm");
         return;
     }
     if (!have || !snap.env_valid) {
         lv_label_set_text(s_env_status, "BME680: waiting for first sample...");
         lv_obj_set_style_text_color(s_env_status, lv_palette_main(LV_PALETTE_AMBER), 0);
-        lv_label_set_text(s_env_data, "--.-- C    --.- %RH\n------- Pa    ------ ohm");
+        lv_label_set_text(s_env_data, "--.-- F    --.- %RH\n------- Pa    ------ ohm");
         return;
     }
 
-    int32_t t = snap.env.temp_c_x100;
+    int32_t f = snap.env.temp_c_x100 * 9 / 5 + 3200;  // centi-Fahrenheit
     char buf[96];
-    snprintf(buf, sizeof(buf), "%ld.%02ld C    %lu.%lu %%RH\n%lu Pa    %lu ohm",
-             (long)(t / 100), (long)(labs(t) % 100),
+    snprintf(buf, sizeof(buf), "%ld.%02ld F    %lu.%lu %%RH\n%lu Pa    %lu ohm",
+             (long)(f / 100), (long)(labs(f) % 100),
              (unsigned long)(snap.env.hum_x100 / 100),
              (unsigned long)((snap.env.hum_x100 / 10) % 10),
              (unsigned long)snap.env.press_pa, (unsigned long)snap.env.gas_ohm);
@@ -86,7 +86,7 @@ lv_obj_t* ui_hello_create(void)
     lv_obj_align(s_env_status, LV_ALIGN_TOP_MID, 0, 44);
 
     s_env_data = lv_label_create(scr);
-    lv_label_set_text(s_env_data, "--.-- C    --.- %RH\n------- Pa    ------ ohm");
+    lv_label_set_text(s_env_data, "--.-- F    --.- %RH\n------- Pa    ------ ohm");
     lv_obj_set_style_text_color(s_env_data, lv_color_white(), 0);
     lv_obj_set_style_text_align(s_env_data, LV_TEXT_ALIGN_CENTER, 0);
     lv_obj_align(s_env_data, LV_ALIGN_TOP_MID, 0, 66);
