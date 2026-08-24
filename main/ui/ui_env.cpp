@@ -3,21 +3,20 @@
 #include <cstdio>
 #include <cstdlib>
 #include "ui_spin3d.h"
+#include "ui_home.h"
 
 // -----------------------------------------------------------------------------
 // Gauge model
-// All gauge math runs in centi-units of the displayed quantity (e.g. 0.01 F).
-// Bands are cumulative end fractions along the scale, last one always 1.0.
 // -----------------------------------------------------------------------------
 
 typedef struct {
-    float end;          // cumulative end of this band, 0..1
+    float end;
     lv_color_t color;
 } Band;
 
 typedef struct {
     const char* name = nullptr;
-    const Band* bands = nullptr;    // nullptr = smooth two-color gradient track, no alarm semantics
+    const Band* bands = nullptr;
     int nbands = 0;
     lv_color_t grad_a = {}, grad_b = {};
     int32_t min_x100 = 0, max_x100 = 0;
@@ -32,23 +31,22 @@ typedef struct {
     bool has_value = false;
 } Gauge;
 
-// Equipment-grade band tables (IT hardware environment, not human comfort)
-static const Band TEMP_BANDS[] = {          // 32..122 F
-    {0.300f, lv_color_hex(0x2196F3)},       // < 59 F   cool
-    {0.556f, lv_color_hex(0x4CAF50)},       // 59..82   nominal
-    {0.700f, lv_color_hex(0xFFC107)},       // 82..95   warm
-    {1.000f, lv_color_hex(0xF44336)},       // > 95     hot
+static const Band TEMP_BANDS[] = {
+    {0.300f, lv_color_hex(0x2196F3)},
+    {0.556f, lv_color_hex(0x4CAF50)},
+    {0.700f, lv_color_hex(0xFFC107)},
+    {1.000f, lv_color_hex(0xF44336)},
 };
-static const Band HUM_BANDS[] = {           // 0..100 %RH
-    {0.300f, lv_color_hex(0xFFC107)},       // < 30     static risk
-    {0.600f, lv_color_hex(0x4CAF50)},       // 30..60   nominal
-    {0.750f, lv_color_hex(0xFFC107)},       // 60..75   damp
-    {1.000f, lv_color_hex(0xF44336)},       // > 75     condensation risk
+static const Band HUM_BANDS[] = {
+    {0.300f, lv_color_hex(0xFFC107)},
+    {0.600f, lv_color_hex(0x4CAF50)},
+    {0.750f, lv_color_hex(0xFFC107)},
+    {1.000f, lv_color_hex(0xF44336)},
 };
-static const Band VOC_BANDS[] = {           // 0..150 kOhm, higher = cleaner air
-    {0.067f, lv_color_hex(0xF44336)},       // < 10 k   poor
-    {0.333f, lv_color_hex(0xFFC107)},       // 10..50 k fair
-    {1.000f, lv_color_hex(0x4CAF50)},       // > 50 k   good
+static const Band VOC_BANDS[] = {
+    {0.067f, lv_color_hex(0xF44336)},
+    {0.333f, lv_color_hex(0xFFC107)},
+    {1.000f, lv_color_hex(0x4CAF50)},
 };
 
 static void fmt_tenths(char* b, size_t n, int32_t v, const char* unit)
@@ -61,23 +59,23 @@ static void fmt_voc(char* b, size_t n, int32_t v)   { fmt_tenths(b, n, v, "k"); 
 static void fmt_press(char* b, size_t n, int32_t v) { snprintf(b, n, "%ld hPa", (long)(v / 100)); }
 
 static Gauge s_gauges[] = {
-    { .name = "TEMP",     .bands = TEMP_BANDS, .nbands = 4,
+    { .name = "TEMP",      .bands = TEMP_BANDS, .nbands = 4,
       .min_x100 = 3200,  .max_x100 = 12200,  .fmt = fmt_temp,  .shape = SPIN_OCTA  },
-    { .name = "HUMIDITY", .bands = HUM_BANDS,  .nbands = 4,
+    { .name = "HUMIDITY",  .bands = HUM_BANDS,  .nbands = 4,
       .min_x100 = 0,     .max_x100 = 10000,  .fmt = fmt_hum,   .shape = SPIN_TETRA },
-    { .name = "PRESSURE", .bands = nullptr,    .nbands = 0,
+    { .name = "PRESSURE",  .bands = nullptr,    .nbands = 0,
       .grad_a = lv_color_hex(0x1DE9B6), .grad_b = lv_color_hex(0x2979FF),
       .min_x100 = 95000, .max_x100 = 105000, .fmt = fmt_press, .shape = SPIN_ICOSA },
-    { .name = "AIR (VOC)", .bands = VOC_BANDS, .nbands = 3,
+    { .name = "AIR (VOC)", .bands = VOC_BANDS,  .nbands = 3,
       .min_x100 = 0,     .max_x100 = 15000,  .fmt = fmt_voc,   .shape = SPIN_CUBE  },
 };
 static constexpr int N_GAUGES = sizeof(s_gauges) / sizeof(s_gauges[0]);
 
-// Snapshot handoff from main_task (spinlock, same pattern as the rest of the UI)
 static portMUX_TYPE s_mux = portMUX_INITIALIZER_UNLOCKED;
 static EnvSnapshot_t s_latest;
 static bool s_has_snapshot;
 static bool s_bme680_present;
+static bool s_env_visible;
 
 static lv_obj_t* s_status;
 
@@ -107,7 +105,6 @@ static lv_color_t band_color(const Gauge* g, float frac)
     return g->bands[g->nbands - 1].color;
 }
 
-// Value tween: re-render the number every animation frame
 static void value_anim_cb(void* var, int32_t v)
 {
     Gauge* g = (Gauge*)var;
@@ -117,7 +114,6 @@ static void value_anim_cb(void* var, int32_t v)
     lv_label_set_text(g->value_label, buf);
 }
 
-// Marker travel: ease the position indicator along the scale
 static void marker_anim_cb(void* var, int32_t x)
 {
     Gauge* g = (Gauge*)var;
@@ -161,6 +157,8 @@ static void gauge_clear(Gauge* g)
 
 static void env_refresh(lv_timer_t*)
 {
+    if (!s_env_visible) return;
+
     taskENTER_CRITICAL(&s_mux);
     EnvSnapshot_t snap = s_latest;
     bool have = s_has_snapshot;
@@ -184,18 +182,17 @@ static void env_refresh(lv_timer_t*)
     lv_obj_set_style_text_color(s_status, lv_color_hex(0x4CAF50), 0);
     gauge_set(&s_gauges[0], snap.env.temp_c_x100 * 9 / 5 + 3200);
     gauge_set(&s_gauges[1], (int32_t)snap.env.hum_x100);
-    gauge_set(&s_gauges[2], (int32_t)snap.env.press_pa);      // Pa == centi-hPa
-    gauge_set(&s_gauges[3], (int32_t)(snap.env.gas_ohm / 10)); // -> centi-kOhm
+    gauge_set(&s_gauges[2], (int32_t)snap.env.press_pa);
+    gauge_set(&s_gauges[3], (int32_t)(snap.env.gas_ohm / 10));
 }
 
-// One gauge cell: name, big value, banded track + marker, min/max end labels
 static void build_gauge(lv_obj_t* scr, Gauge* g, int x, int y)
 {
     const int W = 140, TRACK_H = 12, TRACK_Y = y + 58;
 
     lv_obj_t* name = lv_label_create(scr);
     lv_label_set_text(name, g->name);
-    lv_obj_set_style_text_color(name, lv_color_hex(0x9E9E9E), 0);
+    lv_obj_set_style_text_color(name, lv_color_hex(0xE8E8E8), 0);
     lv_obj_set_pos(name, x, y);
 
     g->value_label = lv_label_create(scr);
@@ -262,28 +259,45 @@ static void build_gauge(lv_obj_t* scr, Gauge* g, int x, int y)
     lv_obj_set_pos(hi, x + W - 48, TRACK_Y + TRACK_H + 4);
 }
 
+static void back_cb(lv_event_t*)
+{
+    ui_home_load();
+}
+
 lv_obj_t* ui_env_create(void)
 {
     lv_obj_t* scr = lv_obj_create(nullptr);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
 
-    lv_obj_t* title = lv_label_create(scr);
-    lv_label_set_text(title, "ENVIRONMENT");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(title, lv_color_white(), 0);
-    lv_obj_set_pos(title, 12, 8);
+    lv_obj_t* back = lv_btn_create(scr);
+    lv_obj_set_size(back, 80, 40);
+    lv_obj_set_pos(back, 4, 4);
+    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_radius(back, 3, 0);
+    lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
 
+    lv_obj_t* back_lbl = lv_label_create(back);
+    lv_label_set_text(back_lbl, "<");
+    lv_obj_center(back_lbl);
+
+    const int Y0 = 66;
     s_status = lv_label_create(scr);
     lv_label_set_text(s_status, "WAITING FOR SAMPLE");
     lv_obj_set_style_text_color(s_status, lv_color_hex(0xFFC107), 0);
-    lv_obj_set_pos(s_status, 198, 14);
+    lv_obj_set_pos(s_status, 12, 48);
 
-    build_gauge(scr, &s_gauges[0], 12, 44);
-    build_gauge(scr, &s_gauges[1], 168, 44);
-    build_gauge(scr, &s_gauges[2], 12, 146);
-    build_gauge(scr, &s_gauges[3], 168, 146);
+    build_gauge(scr, &s_gauges[0], 12, Y0);
+    build_gauge(scr, &s_gauges[1], 168, Y0);
+    build_gauge(scr, &s_gauges[2], 12, Y0 + 76);
+    build_gauge(scr, &s_gauges[3], 168, Y0 + 76);
 
     lv_timer_create(env_refresh, 500, nullptr);
     return scr;
+}
+
+void ui_env_set_visible(bool visible)
+{
+    s_env_visible = visible;
+    ui_spin3d_enable(visible);
 }

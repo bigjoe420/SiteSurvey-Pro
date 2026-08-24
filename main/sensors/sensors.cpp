@@ -60,7 +60,9 @@ static void i2c_bus_scan(i2c_master_bus_handle_t bus)
 static void sensor_task(void*)
 {
     GpsState gps = {};
-    TickType_t last_env = 0;
+    // First env shot immediately (not after a full period) so the splash
+    // env gate can clear ~3 s after boot instead of ~6 s
+    TickType_t last_env = xTaskGetTickCount() - pdMS_TO_TICKS(ENV_PERIOD_MS);
 
     while (true) {
         gps_poll(&gps);  // 100 ms UART timeout bounds the loop cadence

@@ -37,6 +37,10 @@ esp_err_t scan_engine_init(void);
 // Consumer handle, valid after scan_engine_init().
 QueueHandle_t scan_engine_queue(void);
 
+// Copies the AP pool (strongest signal first) into `out`, returns count.
+// Spinlock-guarded against wifi_scan_task upserts; safe from ui_task.
+int scan_engine_snapshot(ScanResult_t* out, int max);
+
 // Starts wifi_scan_task (3 KB stack): alternating 2.4/5 GHz active scan loop.
 void scan_engine_start_task(void);
 

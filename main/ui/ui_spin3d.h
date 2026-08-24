@@ -21,3 +21,6 @@ Spin3D* ui_spin3d_create(lv_obj_t* parent, int x, int y, int size, spin3d_shape_
 
 // frac 0..1 maps to spin speed; color sets the wireframe edge color.
 void ui_spin3d_set(Spin3D* s, float frac, lv_color_t color);
+
+// Master gate: when off, the frame timer renders nothing (hidden tab costs 0 CPU).
+void ui_spin3d_enable(bool on);

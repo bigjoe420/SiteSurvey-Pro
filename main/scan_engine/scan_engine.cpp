@@ -26,6 +26,7 @@ typedef struct {
 } PoolEntry;
 
 static PoolEntry s_pool[POOL_SIZE];
+static portMUX_TYPE s_pool_mux = portMUX_INITIALIZER_UNLOCKED;
 static wifi_ap_record_t s_scan_buf[SCAN_BUF_MAX];
 static QueueHandle_t s_queue;
 static uint32_t s_evictions;
@@ -59,6 +60,7 @@ const char* scan_engine_auth_str(wifi_auth_mode_t mode)
 // Returns the pooled record for queue posting.
 static const ScanResult_t* pool_upsert(const wifi_ap_record_t* rec, TickType_t now)
 {
+    taskENTER_CRITICAL(&s_pool_mux);
     PoolEntry* free_slot = nullptr;
     PoolEntry* lru = nullptr;
     for (PoolEntry& e : s_pool) {
@@ -74,6 +76,7 @@ static const ScanResult_t* pool_upsert(const wifi_ap_record_t* rec, TickType_t n
             e.ap.authmode = rec->authmode;
             e.ap.severity = classify(rec->rssi);
             e.last_seen = now;
+            taskEXIT_CRITICAL(&s_pool_mux);
             return &e.ap;
         }
         if (!lru || e.last_seen < lru->last_seen) lru = &e;
@@ -93,6 +96,7 @@ static const ScanResult_t* pool_upsert(const wifi_ap_record_t* rec, TickType_t n
     slot->ap.severity = classify(rec->rssi);
     slot->last_seen = now;
     slot->used = true;
+    taskEXIT_CRITICAL(&s_pool_mux);
     return &slot->ap;
 }
 
@@ -169,6 +173,28 @@ esp_err_t scan_engine_init(void)
 QueueHandle_t scan_engine_queue(void)
 {
     return s_queue;
+}
+
+int scan_engine_snapshot(ScanResult_t* out, int max)
+{
+    taskENTER_CRITICAL(&s_pool_mux);
+    int n = 0;
+    for (const PoolEntry& e : s_pool) {
+        if (e.used && n < max) out[n++] = e.ap;
+    }
+    taskEXIT_CRITICAL(&s_pool_mux);
+
+    // Strongest first; insertion sort is plenty for <= 64 entries
+    for (int i = 1; i < n; i++) {
+        ScanResult_t key = out[i];
+        int j = i - 1;
+        while (j >= 0 && out[j].rssi < key.rssi) {
+            out[j + 1] = out[j];
+            j--;
+        }
+        out[j + 1] = key;
+    }
+    return n;
 }
 
 void scan_engine_start_task(void)

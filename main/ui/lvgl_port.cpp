@@ -12,8 +12,8 @@
 
 static const char* TAG = "lvgl_port";
 
-// 1/10th of the screen per buffer, double buffered, in PSRAM
-static constexpr size_t BUF_ROWS = 24;
+// 1/10th of the screen per buffer, double buffered, in internal RAM
+static constexpr size_t BUF_ROWS = 48;
 static constexpr size_t BUF_SIZE = SSP_TFT_WIDTH * BUF_ROWS * sizeof(uint16_t);
 
 static esp_lcd_panel_handle_t s_panel;
@@ -64,11 +64,6 @@ static void ui_task(void*)
 {
     while (true) {
         lv_timer_handler();
-        // Defensive fallback: never ship a dark screen if the first-frame
-        // path somehow never fires (should not happen in practice)
-        if (!s_bl_on && lv_tick_get() > 2500) {
-            backlight_on_once("2.5 s fallback (first-frame signal missing)");
-        }
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
@@ -78,9 +73,9 @@ esp_err_t lvgl_port_init(void)
     ESP_RETURN_ON_ERROR(display_init(&s_panel), TAG, "display init failed");
     ESP_RETURN_ON_ERROR(touch_init(), TAG, "touch init failed");
 
-    void* buf1 = heap_caps_malloc(BUF_SIZE, MALLOC_CAP_SPIRAM);
-    void* buf2 = heap_caps_malloc(BUF_SIZE, MALLOC_CAP_SPIRAM);
-    ESP_RETURN_ON_FALSE(buf1 && buf2, ESP_ERR_NO_MEM, TAG, "PSRAM buffer alloc failed");
+    void* buf1 = heap_caps_malloc(BUF_SIZE, MALLOC_CAP_INTERNAL);
+    void* buf2 = heap_caps_malloc(BUF_SIZE, MALLOC_CAP_INTERNAL);
+    ESP_RETURN_ON_FALSE(buf1 && buf2, ESP_ERR_NO_MEM, TAG, "RAM buffer alloc failed");
 
     lv_init();
 
@@ -102,12 +97,15 @@ esp_err_t lvgl_port_init(void)
     ESP_RETURN_ON_ERROR(esp_timer_create(&tick_args, &tick_timer), TAG, "tick timer failed");
     ESP_RETURN_ON_ERROR(esp_timer_start_periodic(tick_timer, 1000), TAG, "tick start failed");
 
-    ESP_LOGI(TAG, "LVGL up: %dx%d, 2x%u KB draw buffers in PSRAM",
+    ESP_LOGI(TAG, "LVGL up: %dx%d, 2x%u KB draw buffers in RAM",
              SSP_TFT_WIDTH, SSP_TFT_HEIGHT, (unsigned)(BUF_SIZE / 1024));
     return ESP_OK;
 }
 
 void lvgl_port_start_ui_task(void)
 {
-    xTaskCreate(ui_task, "ui_task", 4096, nullptr, 5, nullptr);
+    // Prio 24: above Wi-Fi driver (prio 23) so LVGL never gets preempted
+    // during render. The task yields every 10 ms via vTaskDelay, giving
+    // Wi-Fi enough CPU between frames.
+    xTaskCreate(ui_task, "ui_task", 6144, nullptr, 24, nullptr);
 }

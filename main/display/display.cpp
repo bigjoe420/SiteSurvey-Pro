@@ -4,6 +4,8 @@
 #include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
+#include "esp_heap_caps.h"
+#include "esp_lcd_panel_commands.h"
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_vendor.h"
 #include "esp_log.h"
@@ -50,8 +52,19 @@ esp_err_t display_init(esp_lcd_panel_handle_t* out_panel)
     ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7789(io, &panel_cfg, &panel),
                         TAG, "ST7789 panel init failed");
 
-    // Driver init emits SLPOUT with its own 120 ms settle delay
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_init(panel), TAG, "panel init failed");
+    // Fast init: same command order as esp_lcd_panel_init() but with a shorter
+    // SLPOUT settle (50 ms instead of 100 ms). MADCTL must come before COLMOD
+    // and RAMCTRL so the panel latches them in the right orientation.
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, LCD_CMD_SLPOUT, NULL, 0),
+                        TAG, "SLPOUT failed");
+    vTaskDelay(pdMS_TO_TICKS(30));
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, LCD_CMD_MADCTL,
+                        (uint8_t[]){LCD_CMD_BGR_BIT}, 1), TAG, "MADCTL failed");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, LCD_CMD_COLMOD,
+                        (uint8_t[]){0x55}, 1), TAG, "COLMOD failed");
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xB0,
+                        (uint8_t[]){0x00, 0xF0}, 2), TAG, "RAMCTRL failed");
+
     // This panel's native polarity is correct as-is; no INVON needed
     ESP_RETURN_ON_ERROR(esp_lcd_panel_invert_color(panel, false), TAG, "invert failed");
     // Rotation 3: swap axes into landscape, then flip vertically
@@ -59,22 +72,34 @@ esp_err_t display_init(esp_lcd_panel_handle_t* out_panel)
     ESP_RETURN_ON_ERROR(esp_lcd_panel_mirror(panel, false, true), TAG, "mirror failed");
 
     // ST7789 GRAM powers up with random content. With the display still off,
-    // paint the whole panel black so the first visible frame is clean —
-    // otherwise DISPON+backlight expose that "rainbow snow" and LVGL's
-    // partial flushes chase it down the screen row by row.
-    // One row per transaction keeps this stack-only (640 B), ~100 ms once.
-    uint16_t black_row[SSP_TFT_WIDTH] = {};
-    for (int y = 0; y < SSP_TFT_HEIGHT; y++) {
-        ESP_RETURN_ON_ERROR(
-            esp_lcd_panel_draw_bitmap(panel, 0, y, SSP_TFT_WIDTH, y + 1, black_row),
-            TAG, "GRAM clear failed at row %d", y);
+    // paint the whole panel black so the first visible frame is clean.
+    // Batched into 24-row chunks (one SPI transaction each, ~10 ms total).
+    size_t chunk_rows = 24;
+    size_t chunk_bytes = SSP_TFT_WIDTH * chunk_rows * sizeof(uint16_t);
+    uint16_t* black_chunk = (uint16_t*)heap_caps_malloc(chunk_bytes, MALLOC_CAP_DMA);
+    if (black_chunk) {
+        memset(black_chunk, 0, chunk_bytes);
+        for (int y = 0; y < SSP_TFT_HEIGHT; y += chunk_rows) {
+            int h = (y + chunk_rows > SSP_TFT_HEIGHT) ? (SSP_TFT_HEIGHT - y) : chunk_rows;
+            ESP_RETURN_ON_ERROR(
+                esp_lcd_panel_draw_bitmap(panel, 0, y, SSP_TFT_WIDTH, y + h, black_chunk),
+                TAG, "GRAM clear failed at y=%d", y);
+        }
+        heap_caps_free(black_chunk);
+    } else {
+        // Fallback: row-by-row if heap is too tight
+        uint16_t black_row[SSP_TFT_WIDTH] = {};
+        for (int y = 0; y < SSP_TFT_HEIGHT; y++) {
+            ESP_RETURN_ON_ERROR(
+                esp_lcd_panel_draw_bitmap(panel, 0, y, SSP_TFT_WIDTH, y + 1, black_row),
+                TAG, "GRAM clear failed at row %d", y);
+        }
     }
 
     ESP_RETURN_ON_ERROR(esp_lcd_panel_disp_on_off(panel, true), TAG, "DISPON failed");
 
-    // Backlight stays OFF here on purpose: lvgl_port lights it only after
-    // LVGL's first full frame is on the glass, so the panel never reveals
-    // anything but finished pixels.
+    // Backlight is deferred to lvgl_port.cpp backlight_on_once() so the
+    // panel never lights up on unfinished pixels / GRAM clear artifacts.
 
     *out_panel = panel;
     ESP_LOGI(TAG, "ST7789 up: %dx%d landscape, SPI2 @ %lu MHz",

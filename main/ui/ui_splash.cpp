@@ -6,16 +6,17 @@
 
 static const char* TAG = "ui_splash";
 
-static constexpr int BAR_COUNT = 12;
-static constexpr int BAR_W = 18;
-static constexpr int BAR_GAP = 8;
+static constexpr int BAR_COUNT = 8;
+static constexpr int BAR_W = 28;
+static constexpr int BAR_GAP = 10;
 static constexpr int BAR_TOP = 16;
 static constexpr int BAR_MAX_H = 140;
 
-static lv_obj_t* s_next;
+static splash_done_cb_t s_done_cb;
 static volatile bool s_scan_ready;
 static volatile bool s_env_ready;
 static bool s_dismissed;
+static lv_obj_t* s_splash_scr;
 
 static void bar_anim_exec(void* obj, int32_t v)
 {
@@ -31,14 +32,31 @@ static void gate_cb(lv_timer_t* timer)
 {
     if (s_dismissed || !s_scan_ready || !s_env_ready) return;
     s_dismissed = true;
-    ESP_LOGI(TAG, "gates satisfied (first AP + first BME680 read) - fading to main screen");
-    lv_screen_load_anim(s_next, LV_SCR_LOAD_ANIM_FADE_ON, 400, 0, false);
+    ESP_LOGI(TAG, "gates satisfied (first AP + first BME680 read) - loading home");
+
+    lv_obj_t* home = s_done_cb ? s_done_cb() : nullptr;
+    if (home) {
+        lv_screen_load(home);
+        if (s_splash_scr) {
+            lv_obj_delete(s_splash_scr);
+            s_splash_scr = nullptr;
+        }
+    } else {
+        ESP_LOGW(TAG, "home screen callback returned null");
+    }
     lv_timer_delete(timer);
 }
 
-void ui_splash_show(lv_obj_t* next)
+// Impatient finger: any tap on the splash counts both gates as satisfied
+static void skip_cb(lv_event_t*)
 {
-    s_next = next;
+    s_scan_ready = true;
+    s_env_ready = true;
+}
+
+void ui_splash_show(splash_done_cb_t done_cb)
+{
+    s_done_cb = done_cb;
 
     lv_obj_t* scr = lv_obj_create(nullptr);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
@@ -89,7 +107,7 @@ void ui_splash_show(lv_obj_t* next)
 
     // Pulsing status line
     lv_obj_t* status = lv_label_create(scr);
-    lv_label_set_text(status, "Initializing Sensors & Radio...");
+    lv_label_set_text(status, "Initializing Sensors & Radio...  (tap to skip)");
     lv_obj_set_style_text_color(status, lv_palette_main(LV_PALETTE_GREY), 0);
     lv_obj_align(status, LV_ALIGN_BOTTOM_MID, 0, -16);
 
@@ -103,6 +121,8 @@ void ui_splash_show(lv_obj_t* next)
     lv_anim_set_repeat_count(&pa, LV_ANIM_REPEAT_INFINITE);
     lv_anim_start(&pa);
 
+    lv_obj_add_event_cb(scr, skip_cb, LV_EVENT_CLICKED, nullptr);
+    s_splash_scr = scr;
     lv_screen_load(scr);
     lv_timer_create(gate_cb, 100, nullptr);
 }

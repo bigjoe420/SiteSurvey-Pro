@@ -58,6 +58,7 @@ struct Spin3D {
 
 static Spin3D s_pool[MAX_SPINNERS];
 static lv_timer_t* s_timer;
+static bool s_enabled = true;
 static const char* TAG = "spin3d";
 
 static void build_edges(Spin3D* s)
@@ -135,6 +136,7 @@ static void render(Spin3D* s)
 
 static void tick(lv_timer_t*)
 {
+    if (!s_enabled) return;
     for (int i = 0; i < MAX_SPINNERS; i++) {
         Spin3D* s = &s_pool[i];
         if (!s->active) continue;
@@ -172,6 +174,11 @@ Spin3D* ui_spin3d_create(lv_obj_t* parent, int x, int y, int size, spin3d_shape_
 
     if (!s_timer) s_timer = lv_timer_create(tick, 40, nullptr);
     return s;
+}
+
+void ui_spin3d_enable(bool on)
+{
+    s_enabled = on;
 }
 
 void ui_spin3d_set(Spin3D* s, float frac, lv_color_t color)

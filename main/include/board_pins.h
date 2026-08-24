@@ -95,5 +95,5 @@
 // Display Init Timing Constants (milliseconds)
 // =============================================================================
 #define SSP_TFT_RST_HOLD_MS     10
-#define SSP_TFT_RST_WAIT_MS     120
+#define SSP_TFT_RST_WAIT_MS     10
 #define SSP_TFT_SLPOUT_WAIT_MS  120

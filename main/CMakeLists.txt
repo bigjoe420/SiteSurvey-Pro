@@ -3,6 +3,8 @@ idf_component_register(
          "display/display.cpp"
          "touch/touch.cpp"
          "ui/lvgl_port.cpp"
+         "ui/ui_home.cpp"
+         "ui/ui_wifi.cpp"
          "ui/ui_env.cpp"
          "ui/ui_spin3d.cpp"
          "ui/ui_calib.cpp"
