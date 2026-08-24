@@ -17,10 +17,12 @@
 #include "lvgl_port.h"
 #include "ui_home.h"
 #include "ui_env.h"
+#include "ui_wifi.h"
 #include "ui_splash.h"
 #include "scan_engine.h"
 #include "sensors.h"
 #include "sd_card.h"
+#include "session_logger.h"
 
 static const char* TAG = "SiteSurvey";
 
@@ -82,6 +84,10 @@ static void late_init_task(void*)
 
     // Non-fatal: an absent card only means no session logging this boot
     sd_card_init();
+    session_logger_init();
+
+    // Latest GPS state cached for session logging (updated every 5 s).
+    GpsState latest_gps = {};
 
     // Event loop: drains scan_queue + env_queue via the queue set
     bool scan_ready = false;
@@ -98,6 +104,7 @@ static void late_init_task(void*)
                      ap.channel, ap.rssi,
                      SSP_RSSI_TIER_CHAR[ap.severity],
                      scan_engine_auth_str(ap.authmode));
+            session_logger_log_ap(&ap, &latest_gps);
             if (!scan_ready) {
                 scan_ready = true;
                 ui_splash_notify_scan_ready();
@@ -106,6 +113,11 @@ static void late_init_task(void*)
             EnvSnapshot_t snap;
             xQueueReceive(member, &snap, 0);
             ui_env_post_env(&snap, sensors_bme680_present());
+            ui_wifi_post_env(&snap, sensors_bme680_present());
+
+            // Cache GPS state for the next scan log entry.
+            latest_gps = snap.gps;
+
             if (snap.env_valid) {
                 int32_t t = snap.env.temp_c_x100;
                 ESP_LOGI(TAG, "env: %ld.%02ld C  %lu.%02lu %%RH  %lu Pa  gas %lu ohm",

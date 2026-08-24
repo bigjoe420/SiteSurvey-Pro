@@ -6,6 +6,7 @@ idf_component_register(
          "ui/ui_home.cpp"
          "ui/ui_wifi.cpp"
          "ui/ui_env.cpp"
+         "ui/ui_spectrum.cpp"
          "ui/ui_spin3d.cpp"
          "ui/ui_calib.cpp"
          "ui/ui_splash.cpp"
@@ -14,6 +15,7 @@ idf_component_register(
          "sensors/gps.cpp"
          "sensors/sensors.cpp"
          "storage/sd_card.cpp"
+         "storage/session_logger.cpp"
     INCLUDE_DIRS "include" "display" "touch" "ui" "scan_engine" "sensors" "storage"
     REQUIRES esp_driver_gpio esp_driver_spi esp_driver_uart esp_driver_i2c esp_driver_sdspi esp_lcd esp_timer esp_event esp_netif esp_wifi nvs_flash fatfs sdmmc lvgl__lvgl
 )

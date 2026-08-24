@@ -172,13 +172,19 @@ Spin3D* ui_spin3d_create(lv_obj_t* parent, int x, int y, int size, spin3d_shape_
     s->active = true;
     render(s);
 
-    if (!s_timer) s_timer = lv_timer_create(tick, 66, nullptr);
+    if (!s_timer) s_timer = lv_timer_create(tick, 100, nullptr);
     return s;
 }
 
 void ui_spin3d_enable(bool on)
 {
     s_enabled = on;
+    if (s_timer) {
+        if (on)
+            lv_timer_resume(s_timer);
+        else
+            lv_timer_pause(s_timer);
+    }
 }
 
 void ui_spin3d_set(Spin3D* s, float frac, lv_color_t color)

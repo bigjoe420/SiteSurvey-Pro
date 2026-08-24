@@ -276,6 +276,7 @@ lv_obj_t* ui_env_create(void)
     lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
     lv_obj_set_style_radius(back, 3, 0);
     lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_set_ext_click_area(back, 16);
 
     lv_obj_t* back_lbl = lv_label_create(back);
     lv_label_set_text(back_lbl, "<");

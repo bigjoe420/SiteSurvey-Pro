@@ -57,8 +57,14 @@ static void flush_cb(lv_display_t* disp, const lv_area_t* area, uint8_t* px_map)
 
 static void touch_read_cb(lv_indev_t* indev, lv_indev_data_t* data)
 {
+    int64_t t0 = esp_timer_get_time();
     int16_t x, y;
-    if (touch_read(&x, &y)) {
+    bool pressed = touch_read(&x, &y);
+    int64_t elapsed = esp_timer_get_time() - t0;
+    if (elapsed > 500) {
+        ESP_LOGW(TAG, "touch_read() took %lld us (>500 us) — SPI contention?", elapsed);
+    }
+    if (pressed) {
         data->state = LV_INDEV_STATE_PRESSED;
         data->point.x = x;
         data->point.y = y;
@@ -75,7 +81,12 @@ static void tick_cb(void*)
 static void ui_task(void*)
 {
     while (true) {
+        int64_t t0 = esp_timer_get_time();
         lv_timer_handler();
+        int64_t elapsed = esp_timer_get_time() - t0;
+        if (elapsed > 5000) {
+            ESP_LOGW(TAG, "lv_timer_handler() took %lld us (>5 ms)", elapsed);
+        }
         if (s_first_frame_done) {
             s_first_frame_done = false;
             backlight_on_once("first full frame drawn");
