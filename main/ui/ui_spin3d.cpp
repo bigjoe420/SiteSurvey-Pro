@@ -172,7 +172,7 @@ Spin3D* ui_spin3d_create(lv_obj_t* parent, int x, int y, int size, spin3d_shape_
     s->active = true;
     render(s);
 
-    if (!s_timer) s_timer = lv_timer_create(tick, 40, nullptr);
+    if (!s_timer) s_timer = lv_timer_create(tick, 66, nullptr);
     return s;
 }
 

@@ -28,6 +28,13 @@ static void opa_anim_exec(void* obj, int32_t v)
     lv_obj_set_style_text_opa((lv_obj_t*)obj, (lv_opa_t)v, 0);
 }
 
+static void deferred_delete_splash_cb(lv_timer_t* timer)
+{
+    lv_obj_t* scr = (lv_obj_t*)lv_timer_get_user_data(timer);
+    if (scr) lv_obj_delete(scr);
+    lv_timer_delete(timer);
+}
+
 static void gate_cb(lv_timer_t* timer)
 {
     if (s_dismissed || !s_scan_ready || !s_env_ready) return;
@@ -36,11 +43,12 @@ static void gate_cb(lv_timer_t* timer)
 
     lv_obj_t* home = s_done_cb ? s_done_cb() : nullptr;
     if (home) {
+        lv_obj_t* old_splash = s_splash_scr;
+        s_splash_scr = nullptr;
         lv_screen_load(home);
-        if (s_splash_scr) {
-            lv_obj_delete(s_splash_scr);
-            s_splash_scr = nullptr;
-        }
+        // Defer deletion: cleaning up 8 infinite bar animations blocks
+        // lv_timer_handler() for tens of ms and swallows touch events.
+        lv_timer_create(deferred_delete_splash_cb, 50, old_splash);
     } else {
         ESP_LOGW(TAG, "home screen callback returned null");
     }

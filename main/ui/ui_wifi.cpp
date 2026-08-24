@@ -14,8 +14,18 @@ typedef struct {
     lv_obj_t* info;
 } Row;
 
-static Row s_rows[MAX_ROWS];
-static bool s_wifi_visible;
+typedef struct {
+    bool shown;
+    int8_t rssi;
+    char ssid[33];
+    char info[48];
+} RowState;
+
+static Row        s_rows[MAX_ROWS];
+static RowState   s_state[MAX_ROWS];
+static lv_obj_t*  s_list;
+static bool       s_wifi_visible;
+static bool       s_rows_built;
 
 // ROADMAP §5 tiers: Strong green, Moderate yellow, Weak orange, Marginal red
 static const lv_color_t TIER_COLORS[] = {
@@ -70,16 +80,7 @@ static void build_row(lv_obj_t* parent, Row* r, int idx)
     lv_obj_set_pos(r->info, COL_INFO_X, (ROW_H - lv_font_get_line_height(&lv_font_montserrat_14)) / 2);
 }
 
-typedef struct {
-    bool shown;
-    int8_t rssi;
-    char ssid[33];
-    char info[48];
-} RowState;
-
-static RowState s_state[MAX_ROWS];
-
-static void refresh(lv_timer_t*)
+static void do_refresh(void)
 {
     if (!s_wifi_visible) return;
 
@@ -96,6 +97,11 @@ static void refresh(lv_timer_t*)
                 lv_obj_add_flag(r->row, LV_OBJ_FLAG_HIDDEN);
             }
             continue;
+        }
+
+        // Lazy build: create row on first need so ui_wifi_create() stays fast.
+        if (!r->row) {
+            build_row(s_list, r, i);
         }
 
         const ScanResult_t* ap = &aps[i];
@@ -130,6 +136,12 @@ static void refresh(lv_timer_t*)
             lv_label_set_text(r->info, info);
         }
     }
+    s_rows_built = true;
+}
+
+static void refresh(lv_timer_t*)
+{
+    do_refresh();
 }
 
 static void back_cb(lv_event_t*)
@@ -154,25 +166,27 @@ lv_obj_t* ui_wifi_create(void)
     lv_label_set_text(back_lbl, "<");
     lv_obj_center(back_lbl);
 
-    lv_obj_t* list = lv_obj_create(scr);
-    lv_obj_set_size(list, 320, 192);
-    lv_obj_set_pos(list, 0, 48);
-    lv_obj_set_style_bg_opa(list, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(list, 0, 0);
-    lv_obj_set_style_pad_all(list, 2, 0);
-    lv_obj_set_style_pad_top(list, 2, 0);
-    lv_obj_set_style_pad_row(list, 0, 0);
-    lv_obj_set_scrollbar_mode(list, LV_SCROLLBAR_MODE_OFF);
+    s_list = lv_obj_create(scr);
+    lv_obj_set_size(s_list, 320, 192);
+    lv_obj_set_pos(s_list, 0, 48);
+    lv_obj_set_style_bg_opa(s_list, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(s_list, 0, 0);
+    lv_obj_set_style_pad_all(s_list, 2, 0);
+    lv_obj_set_style_pad_top(s_list, 2, 0);
+    lv_obj_set_style_pad_row(s_list, 0, 0);
+    lv_obj_set_scrollbar_mode(s_list, LV_SCROLLBAR_MODE_OFF);
 
-    for (int i = 0; i < MAX_ROWS; i++) {
-        build_row(list, &s_rows[i], i);
-        lv_obj_add_flag(s_rows[i].row, LV_OBJ_FLAG_HIDDEN);
-    }
-    lv_timer_create(refresh, 2000, nullptr);
+    // Rows are NOT built here — lazy creation in do_refresh() keeps this fast.
+    lv_timer_create(refresh, 5000, nullptr);
     return scr;
 }
 
 void ui_wifi_set_visible(bool visible)
 {
     s_wifi_visible = visible;
+    if (visible && !s_rows_built) {
+        // Immediate population if scan results already exist; prevents
+        // the black-list stare while waiting for the 5 s timer.
+        do_refresh();
+    }
 }

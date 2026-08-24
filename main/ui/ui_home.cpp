@@ -40,7 +40,7 @@ lv_obj_t* ui_home_create(void)
     lv_obj_align(wifi_btn, LV_ALIGN_CENTER, 0, -14);
     lv_obj_set_style_bg_color(wifi_btn, lv_color_hex(0x4CAF50), 0);
     lv_obj_set_style_radius(wifi_btn, 4, 0);
-    lv_obj_add_event_cb(wifi_btn, wifi_btn_cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_add_event_cb(wifi_btn, wifi_btn_cb, LV_EVENT_PRESSED, nullptr);
 
     lv_obj_t* wifi_lbl = lv_label_create(wifi_btn);
     lv_label_set_text(wifi_lbl, "Wi-Fi SCAN");
@@ -52,7 +52,7 @@ lv_obj_t* ui_home_create(void)
     lv_obj_align(env_btn, LV_ALIGN_CENTER, 0, 54);
     lv_obj_set_style_bg_color(env_btn, lv_color_hex(0x2196F3), 0);
     lv_obj_set_style_radius(env_btn, 4, 0);
-    lv_obj_add_event_cb(env_btn, env_btn_cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_add_event_cb(env_btn, env_btn_cb, LV_EVENT_PRESSED, nullptr);
 
     lv_obj_t* env_lbl = lv_label_create(env_btn);
     lv_label_set_text(env_lbl, "ENVIRONMENT");

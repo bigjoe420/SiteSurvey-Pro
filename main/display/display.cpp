@@ -14,6 +14,8 @@
 
 static const char* TAG = "display";
 
+static esp_lcd_panel_io_handle_t s_io;  // kept for callback registration
+
 esp_err_t display_init(esp_lcd_panel_handle_t* out_panel)
 {
     // ST7789 needs stable power rails before it accepts SPI commands
@@ -31,7 +33,6 @@ esp_err_t display_init(esp_lcd_panel_handle_t* out_panel)
     ESP_RETURN_ON_ERROR(spi_bus_initialize(SPI2_HOST, &bus, SPI_DMA_CH_AUTO),
                         TAG, "SPI bus init failed");
 
-    esp_lcd_panel_io_handle_t io;
     esp_lcd_panel_io_spi_config_t io_cfg = {};
     io_cfg.cs_gpio_num = SSP_TFT_CS;
     io_cfg.dc_gpio_num = SSP_TFT_DC;
@@ -41,7 +42,7 @@ esp_err_t display_init(esp_lcd_panel_handle_t* out_panel)
     io_cfg.lcd_cmd_bits = 8;
     io_cfg.lcd_param_bits = 8;
     ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI2_HOST,
-                                                 &io_cfg, &io),
+                                                 &io_cfg, &s_io),
                         TAG, "panel IO init failed");
 
     esp_lcd_panel_handle_t panel;
@@ -49,20 +50,20 @@ esp_err_t display_init(esp_lcd_panel_handle_t* out_panel)
     panel_cfg.reset_gpio_num = SSP_TFT_RST;     // chip-level reset, no GPIO
     panel_cfg.rgb_ele_order = LCD_RGB_ELEMENT_ORDER_BGR;
     panel_cfg.bits_per_pixel = 16;
-    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7789(io, &panel_cfg, &panel),
+    ESP_RETURN_ON_ERROR(esp_lcd_new_panel_st7789(s_io, &panel_cfg, &panel),
                         TAG, "ST7789 panel init failed");
 
     // Fast init: same command order as esp_lcd_panel_init() but with a shorter
     // SLPOUT settle (50 ms instead of 100 ms). MADCTL must come before COLMOD
     // and RAMCTRL so the panel latches them in the right orientation.
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, LCD_CMD_SLPOUT, NULL, 0),
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(s_io, LCD_CMD_SLPOUT, NULL, 0),
                         TAG, "SLPOUT failed");
     vTaskDelay(pdMS_TO_TICKS(30));
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, LCD_CMD_MADCTL,
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(s_io, LCD_CMD_MADCTL,
                         (uint8_t[]){LCD_CMD_BGR_BIT}, 1), TAG, "MADCTL failed");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, LCD_CMD_COLMOD,
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(s_io, LCD_CMD_COLMOD,
                         (uint8_t[]){0x55}, 1), TAG, "COLMOD failed");
-    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(io, 0xB0,
+    ESP_RETURN_ON_ERROR(esp_lcd_panel_io_tx_param(s_io, 0xB0,
                         (uint8_t[]){0x00, 0xF0}, 2), TAG, "RAMCTRL failed");
 
     // This panel's native polarity is correct as-is; no INVON needed
@@ -105,6 +106,13 @@ esp_err_t display_init(esp_lcd_panel_handle_t* out_panel)
     ESP_LOGI(TAG, "ST7789 up: %dx%d landscape, SPI2 @ %lu MHz",
              SSP_TFT_WIDTH, SSP_TFT_HEIGHT, SSP_TFT_SPI_FREQ_HZ / 1000000UL);
     return ESP_OK;
+}
+
+esp_err_t display_register_flush_done_cb(esp_lcd_panel_io_color_trans_done_cb_t cb, void* user_ctx)
+{
+    esp_lcd_panel_io_callbacks_t cbs = {};
+    cbs.on_color_trans_done = cb;
+    return esp_lcd_panel_io_register_event_callbacks(s_io, &cbs, user_ctx);
 }
 
 void display_set_backlight(bool on)
