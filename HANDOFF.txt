@@ -1,0 +1,55 @@
+SiteSurvey Pro — Session Handoff (2026-08-24 16:50)
+Workspace: D:\SiteSurvey Pro | Target: ESP32-C5 / NM-CYD-C5 | IDF: v6.0.1 | Port: COM7
+Current code state: HEAD 339928d (local only, 7 ahead of origin/main, DO NOT push). Docs (KIMI.md, ROADMAP.md, PROGRESS.md) are local-only via .git/info/exclude.
+
+Owner-confirmed baseline: Touch responsiveness "perfect baseline" on home screen after splash dismisses — boot is clean and fast. Occasional second-tap on back button is acceptable residual quirk. Env screen touch was sluggish due to spin3d CPU load; now fixed.
+
+What this session locked in (commit 339928d):
+- Channel Spectrum screen (ui_spectrum.cpp/h) — channel density/occupancy view for 2.4G + 5G
+- Environmental overlay on Wi-Fi scan screen (ui_wifi.cpp) — BME680 live readout top-right
+- Session logger infra (session_logger.cpp/h) — CSV export to SD card
+- Non-blocking DMA flush in lvgl_port.cpp (flush done callback, no more ~12 ms SPI block starving touch)
+- Home buttons → LV_EVENT_PRESSED (instant); Back buttons → LV_EVENT_CLICKED (prevents press-through)
+- Lazy Wi-Fi row creation in ui_wifi.cpp (rows built on first refresh, not at init)
+- Spin3d timer 40 ms → 66 ms → 100 ms (25 Hz → 15 Hz → 10 Hz) to reduce DMA/CPU contention
+- **NEW:** ui_spin3d_enable() now uses lv_timer_pause()/lv_timer_resume() — timer literally stops firing when env screen is hidden (bool-gate was not enough)
+- XPT2046 2-sample debounce attempted and reverted (non-blocking flush fixed root cause)
+- Timing instrumentation in lvgl_port.cpp for lv_timer_handler() and touch_read() audit
+- KIMI.md §5.14 updated with Corollaries 11–17
+- PROGRESS.md updated with spin3d audit entry
+- ROADMAP.md updated: spectrum, session logger, env overlay all marked done
+
+Key truths to carry forward (KIMI.md §5.14):
+Corollary 11: Non-blocking DMA flush is mandatory for responsive touch on 20 MHz SPI
+Corollary 12: Forward nav = PRESSED, Back nav = CLICKED
+Corollary 13: Lazy widget creation when init-time object count blocks UI task
+Corollary 14: Adaptive lv_timer_handler() sleep caused black screen — fixed 10 ms only
+Corollary 15: Animations on high-frequency refresh widgets are toxic on shared SPI buses — prefer LV_ANIM_OFF with change guards
+Corollary 16: A lv_timer that only gates on a boolean flag is NOT free when hidden — must use lv_timer_pause()/lv_timer_resume() to literally remove it from LVGL's active timer list
+Corollary 17: Canvas-based animations are the most expensive widget type on ESP32-C5 — benchmark lv_timer_handler() duration on-device; if it exceeds 5 ms, reduce update rate or simplify geometry
+
+Build/flash commands:
+powershell
+C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/idfenv.ps1 idf.py build
+idf.py -p COM7 flash
+tools/capture_boot.ps1 -Port COM7 -Seconds 40
+
+Queued features (pick one):
+- **Cleanup:** Remove timing instrumentation from lvgl_port.cpp — audit is complete, the t0/elapsed/ESP_LOGW blocks in ui_task() and touch_read_cb() should be stripped before they become permanent noise
+- BLE Device screen — BLE scan list (MAC, name, RSSI, manufacturer data) (ROADMAP §4.1, screen #2)
+- GPS Status screen — Live lat/lon, fix quality, track plot (ROADMAP §4.1, screen #4)
+- Alert Log screen — Target matches, threshold breaches (ROADMAP §4.1, screen #6)
+- Settings + Data Manager — Scan config, export logs, SD status (ROADMAP §4.1, screen #7)
+- Power management & battery life optimization (Phase 3)
+
+Read order on session start: KIMI.md §1, then ROADMAP.md, then PROGRESS.md §1.
+- BLE Device screen — BLE scan list (MAC, name, RSSI, manufacturer data) (ROADMAP §4.1, screen #2)
+- GPS Status screen — Live lat/lon, fix quality, track plot (ROADMAP §4.1, screen #4)
+- Alert Log screen — Target matches, threshold breaches (ROADMAP §4.1, screen #6)
+- Settings + Data Manager — Scan config, export logs, SD status (ROADMAP §4.1, screen #7)
+- Power management & battery life optimization (Phase 3)
+
+Read order on session start: KIMI.md §1, then ROADMAP.md, then PROGRESS.md §1.
+
+Timing instrumentation note:
+lvgl_port.cpp currently has measurement code for lv_timer_handler() and touch_read(). It logs warnings when handler >5 ms or touch >500 us. This is useful for regression testing. If log noise becomes annoying, remove the t0/elapsed/ESP_LOGW blocks in ui_task() and touch_read_cb().
