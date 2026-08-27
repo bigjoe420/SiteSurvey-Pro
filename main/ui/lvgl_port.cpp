@@ -85,9 +85,9 @@ esp_err_t lvgl_port_init(void)
     ESP_RETURN_ON_ERROR(touch_init(), TAG, "touch init failed");
     ESP_RETURN_ON_ERROR(touch_start_sampler(), TAG, "touch sampler start failed");
 
-    void* buf1 = heap_caps_malloc(BUF_SIZE, MALLOC_CAP_INTERNAL);
-    void* buf2 = heap_caps_malloc(BUF_SIZE, MALLOC_CAP_INTERNAL);
-    ESP_RETURN_ON_FALSE(buf1 && buf2, ESP_ERR_NO_MEM, TAG, "RAM buffer alloc failed");
+    void* buf1 = heap_caps_malloc(BUF_SIZE, MALLOC_CAP_SPIRAM);
+    void* buf2 = heap_caps_malloc(BUF_SIZE, MALLOC_CAP_SPIRAM);
+    ESP_RETURN_ON_FALSE(buf1 && buf2, ESP_ERR_NO_MEM, TAG, "PSRAM buffer alloc failed");
 
     lv_init();
 
@@ -112,7 +112,7 @@ esp_err_t lvgl_port_init(void)
     ESP_RETURN_ON_ERROR(esp_timer_create(&tick_args, &tick_timer), TAG, "tick timer failed");
     ESP_RETURN_ON_ERROR(esp_timer_start_periodic(tick_timer, 1000), TAG, "tick start failed");
 
-    ESP_LOGI(TAG, "LVGL up: %dx%d, 2x%u KB draw buffers in RAM",
+    ESP_LOGI(TAG, "LVGL up: %dx%d, 2x%u KB draw buffers in PSRAM",
              SSP_TFT_WIDTH, SSP_TFT_HEIGHT, (unsigned)(BUF_SIZE / 1024));
     return ESP_OK;
 }
