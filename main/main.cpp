@@ -18,8 +18,10 @@
 #include "ui_home.h"
 #include "ui_env.h"
 #include "ui_wifi.h"
+#include "ui_ble.h"
 #include "ui_splash.h"
 #include "scan_engine.h"
+#include "scan_ble.h"
 #include "sensors.h"
 #include "sd_card.h"
 #include "session_logger.h"
@@ -67,20 +69,24 @@ static void late_init_task(void*)
 
     ESP_ERROR_CHECK(scan_engine_init());
     ESP_ERROR_CHECK(sensors_init());
+    ESP_ERROR_CHECK(ble_scan_init());
 
-    // Build queue set and add BOTH queues BEFORE any task can post.
+    // Build queue set and add ALL queues BEFORE any task can post.
     // xQueueAddToSet() fails (pdFAIL) if the queue already holds data.
     QueueHandle_t scan_queue = scan_engine_queue();
     QueueHandle_t env_queue  = sensors_queue();
-    QueueSetHandle_t qs = xQueueCreateSet(16 + 8);
+    QueueHandle_t ble_queue  = ble_scan_queue();
+    QueueSetHandle_t qs = xQueueCreateSet(16 + 8 + 16);
     ESP_ERROR_CHECK(qs ? ESP_OK : ESP_ERR_NO_MEM);
     ESP_ERROR_CHECK(xQueueAddToSet(scan_queue, qs) == pdPASS ? ESP_OK : ESP_FAIL);
     ESP_ERROR_CHECK(xQueueAddToSet(env_queue,  qs) == pdPASS ? ESP_OK : ESP_FAIL);
+    ESP_ERROR_CHECK(xQueueAddToSet(ble_queue,  qs) == pdPASS ? ESP_OK : ESP_FAIL);
 
     // NOW start producer tasks — safe to post because queues are already
     // members of the queue set.
     scan_engine_start_task();
     sensors_start_task();
+    ble_scan_start_task();
 
     // Non-fatal: an absent card only means no session logging this boot
     sd_card_init();
@@ -89,7 +95,7 @@ static void late_init_task(void*)
     // Latest GPS state cached for session logging (updated every 5 s).
     GpsState latest_gps = {};
 
-    // Event loop: drains scan_queue + env_queue via the queue set
+    // Event loop: drains scan_queue + env_queue + ble_queue via the queue set
     bool scan_ready = false;
     bool env_ready  = false;
     while (true) {
@@ -141,6 +147,14 @@ static void late_init_task(void*)
                 env_ready = true;
                 ui_splash_notify_env_ready();
             }
+        } else if (member == ble_queue) {
+            BleScanResult_t dev;
+            xQueueReceive(member, &dev, 0);
+            ESP_LOGI(TAG, "ble: %-20s %02X:%02X:%02X:%02X:%02X:%02X %4d dBm %c",
+                     dev.name[0] ? dev.name : "<unknown>",
+                     dev.mac[0], dev.mac[1], dev.mac[2], dev.mac[3], dev.mac[4], dev.mac[5],
+                     dev.rssi,
+                     SSP_RSSI_TIER_CHAR[dev.severity]);
         }
     }
 }
