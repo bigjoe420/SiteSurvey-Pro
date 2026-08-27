@@ -4,6 +4,8 @@
 #include "driver/spi_master.h"
 #include "esp_check.h"
 #include "esp_log.h"
+#include "esp_timer.h"
+#include "freertos/FreeRTOS.h"
 
 static const char* TAG = "touch";
 
@@ -16,6 +18,12 @@ static constexpr uint8_t CMD_Z1 = 0xB0;
 static constexpr uint16_t PRESS_THRESHOLD = 100;
 
 static spi_device_handle_t s_dev;
+
+// ---- Background sampler state (lock-free via critical section) ----
+static int16_t s_sample_x;
+static int16_t s_sample_y;
+static bool    s_sample_pressed;
+static portMUX_TYPE s_sample_mux = portMUX_INITIALIZER_UNLOCKED;
 
 // One control byte out, two result bytes back; CS stays low for the whole frame
 static uint16_t read_channel(uint8_t cmd)
@@ -90,4 +98,47 @@ bool touch_read(int16_t* x, int16_t* y)
     *y = map_anchored(raw_x, SSP_TOUCH_RAWX_TOP, SSP_TOUCH_RAWX_BOTTOM,
                       SSP_TOUCH_ANCHOR_MIN, SSP_TOUCH_ANCHOR_MAX_Y, SSP_TFT_HEIGHT - 1);
     return true;
+}
+
+// ---- Background sampler ----
+
+static void sampler_cb(void* arg)
+{
+    int16_t x = 0, y = 0;
+    bool pressed = touch_read(&x, &y);
+
+    portENTER_CRITICAL(&s_sample_mux);
+    s_sample_pressed = pressed;
+    if (pressed) {
+        s_sample_x = x;
+        s_sample_y = y;
+    }
+    portEXIT_CRITICAL(&s_sample_mux);
+}
+
+esp_err_t touch_start_sampler(void)
+{
+    esp_timer_create_args_t args = {};
+    args.callback = sampler_cb;
+    args.name = "touch_sampler";
+    esp_timer_handle_t timer;
+    ESP_RETURN_ON_ERROR(esp_timer_create(&args, &timer), TAG, "sampler create failed");
+    ESP_RETURN_ON_ERROR(esp_timer_start_periodic(timer, 20000), TAG, "sampler start failed");
+    ESP_LOGI(TAG, "touch sampler running @ 50 Hz");
+    return ESP_OK;
+}
+
+bool touch_read_latest(int16_t* x, int16_t* y)
+{
+    portENTER_CRITICAL(&s_sample_mux);
+    bool pressed = s_sample_pressed;
+    int16_t lx = s_sample_x;
+    int16_t ly = s_sample_y;
+    portEXIT_CRITICAL(&s_sample_mux);
+
+    if (pressed) {
+        *x = lx;
+        *y = ly;
+    }
+    return pressed;
 }

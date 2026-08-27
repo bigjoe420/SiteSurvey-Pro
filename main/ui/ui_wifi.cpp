@@ -26,6 +26,7 @@ static RowState   s_state[MAX_ROWS];
 static lv_obj_t*  s_list;
 static bool       s_wifi_visible;
 static bool       s_rows_built;
+static lv_timer_t* s_timer;
 
 // Environmental overlay
 static lv_obj_t*  s_env_overlay;
@@ -63,6 +64,8 @@ static void build_row(lv_obj_t* parent, Row* r, int idx)
     r->row = lv_obj_create(parent);
     lv_obj_remove_flag(r->row, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_remove_flag(r->row, LV_OBJ_FLAG_CLICKABLE);
+    // Allow drag gestures on the row to chain up to the scrollable list.
+    lv_obj_add_flag(r->row, LV_OBJ_FLAG_SCROLL_CHAIN);
     lv_obj_set_pos(r->row, 0, idx * ROW_STRIDE);
     lv_obj_set_size(r->row, ROW_W, ROW_H);
     lv_obj_set_style_bg_color(r->row, lv_color_black(), 0);
@@ -178,10 +181,9 @@ static void do_refresh(void)
             lv_obj_remove_flag(r->row, LV_OBJ_FLAG_HIDDEN);
         }
         if (ap->rssi != st->rssi) {
-            bool was_shown = st->rssi != 0;
             st->rssi = ap->rssi;
             lv_color_t c = TIER_COLORS[ap->severity];
-            lv_bar_set_value(r->bar, ap->rssi, was_shown ? LV_ANIM_ON : LV_ANIM_OFF);
+            lv_bar_set_value(r->bar, ap->rssi, LV_ANIM_OFF);
             lv_obj_set_style_bg_color(r->bar, c, LV_PART_INDICATOR);
             lv_obj_set_style_text_color(r->ssid, c, 0);
         }
@@ -195,6 +197,11 @@ static void do_refresh(void)
         }
     }
     s_rows_built = true;
+
+    // Force LVGL to recalculate the list's content area now that rows have
+    // been created/shown.  With absolute positioning + lazy creation, the
+    // scrollable height may not be updated automatically.
+    lv_obj_update_layout(s_list);
 
     // Update env overlay alongside Wi-Fi list
     if (s_env_overlay) {
@@ -246,15 +253,27 @@ lv_obj_t* ui_wifi_create(void)
     lv_obj_set_style_pad_top(s_list, 2, 0);
     lv_obj_set_style_pad_row(s_list, 0, 0);
     lv_obj_set_scrollbar_mode(s_list, LV_SCROLLBAR_MODE_OFF);
+    // Explicit scroll configuration: vertical only, no snap, momentum enabled.
+    // The default flags on a plain lv_obj should include SCROLLABLE, but we
+    // reinforce them here because lazy row creation + absolute positioning
+    // can leave the content area uncalculated until layout is forced.
+    lv_obj_add_flag(s_list, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_list, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+    lv_obj_set_scroll_dir(s_list, LV_DIR_VER);
+    lv_obj_set_scroll_snap_y(s_list, LV_SCROLL_SNAP_NONE);
 
     // Rows are NOT built here — lazy creation in do_refresh() keeps this fast.
-    lv_timer_create(refresh, 5000, nullptr);
+    s_timer = lv_timer_create(refresh, 5000, nullptr);
     return scr;
 }
 
 void ui_wifi_set_visible(bool visible)
 {
     s_wifi_visible = visible;
+    if (s_timer) {
+        if (visible) lv_timer_resume(s_timer);
+        else         lv_timer_pause(s_timer);
+    }
     if (visible && !s_rows_built) {
         // Immediate population if scan results already exist; prevents
         // the black-list stare while waiting for the 5 s timer.

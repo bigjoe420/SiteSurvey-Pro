@@ -32,38 +32,25 @@ static void backlight_on_once(const char* why)
     ESP_LOGI(TAG, "backlight on: %s", why);
 }
 
-// DMA completion callback — called from ISR/task context when the SPI color
-// transfer finishes. Signals LVGL that the buffer is free for the next flush.
-static bool IRAM_ATTR flush_done_cb(esp_lcd_panel_io_handle_t, esp_lcd_panel_io_event_data_t*, void* user_ctx)
+static void flush_cb(lv_display_t* disp, const lv_area_t* area, uint8_t* px_map)
 {
-    lv_display_t* disp = (lv_display_t*)user_ctx;
+    // draw_bitmap queues the DMA transfer and returns (non-blocking for the
+    // queue; brief block only if the driver's internal queue is full).  With
+    // double-buffered partial mode, LVGL renders into the other buffer while
+    // DMA reads from this one, so we can signal flush-ready immediately.
+    esp_lcd_panel_draw_bitmap(s_panel, area->x1, area->y1,
+                              area->x2 + 1, area->y2 + 1, px_map);
+
     if (lv_display_flush_is_last(disp)) {
         s_first_frame_done = true;
     }
     lv_display_flush_ready(disp);
-    return false;  // no need to yield
-}
-
-static void flush_cb(lv_display_t* disp, const lv_area_t* area, uint8_t* px_map)
-{
-    // Non-blocking: draw_bitmap queues the DMA transfer and returns.
-    // flush_done_cb fires when the transfer completes.
-    esp_lcd_panel_draw_bitmap(s_panel, area->x1, area->y1,
-                              area->x2 + 1, area->y2 + 1, px_map);
-    // lv_display_flush_ready() is NOT called here — it is called from the
-    // DMA completion callback. This keeps lv_timer_handler() from blocking on
-    // the ~12 ms SPI transfer, so touch reads never get starved.
 }
 
 static void touch_read_cb(lv_indev_t* indev, lv_indev_data_t* data)
 {
-    int64_t t0 = esp_timer_get_time();
     int16_t x, y;
-    bool pressed = touch_read(&x, &y);
-    int64_t elapsed = esp_timer_get_time() - t0;
-    if (elapsed > 500) {
-        ESP_LOGW(TAG, "touch_read() took %lld us (>500 us) — SPI contention?", elapsed);
-    }
+    bool pressed = touch_read_latest(&x, &y);
     if (pressed) {
         data->state = LV_INDEV_STATE_PRESSED;
         data->point.x = x;
@@ -81,16 +68,13 @@ static void tick_cb(void*)
 static void ui_task(void*)
 {
     while (true) {
-        int64_t t0 = esp_timer_get_time();
         lv_timer_handler();
-        int64_t elapsed = esp_timer_get_time() - t0;
-        if (elapsed > 5000) {
-            ESP_LOGW(TAG, "lv_timer_handler() took %lld us (>5 ms)", elapsed);
-        }
+
         if (s_first_frame_done) {
             s_first_frame_done = false;
             backlight_on_once("first full frame drawn");
         }
+
         vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
@@ -99,6 +83,7 @@ esp_err_t lvgl_port_init(void)
 {
     ESP_RETURN_ON_ERROR(display_init(&s_panel), TAG, "display init failed");
     ESP_RETURN_ON_ERROR(touch_init(), TAG, "touch init failed");
+    ESP_RETURN_ON_ERROR(touch_start_sampler(), TAG, "touch sampler start failed");
 
     void* buf1 = heap_caps_malloc(BUF_SIZE, MALLOC_CAP_INTERNAL);
     void* buf2 = heap_caps_malloc(BUF_SIZE, MALLOC_CAP_INTERNAL);
@@ -113,15 +98,11 @@ esp_err_t lvgl_port_init(void)
     lv_display_set_buffers(s_disp, buf1, buf2, BUF_SIZE, LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(s_disp, flush_cb);
 
-    // Register DMA completion callback so flush_cb() can be non-blocking.
-    ESP_RETURN_ON_ERROR(
-        display_register_flush_done_cb(flush_done_cb, s_disp),
-        TAG, "flush done cb register failed");
-
     lv_indev_t* indev = lv_indev_create();
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(indev, touch_read_cb);
-    // Touch polling at 100 Hz, independent of display refresh (60 Hz)
+    // Touch polling at 100 Hz; the sampler runs at 50 Hz, so every other
+    // read gets a fresh sample and the in-betweens repeat the latest coord.
     lv_timer_set_period(lv_indev_get_read_timer(indev), 10);
 
     esp_timer_create_args_t tick_args = {};
