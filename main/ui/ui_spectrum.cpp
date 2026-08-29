@@ -287,6 +287,10 @@ lv_obj_t* ui_spectrum_create(void)
     lv_obj_set_pos(back, 4, 4);
     lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
     lv_obj_set_style_radius(back, 3, 0);
+    lv_obj_add_flag(back, LV_OBJ_FLAG_FLOATING);
+    lv_obj_add_flag(back, LV_OBJ_FLAG_PRESS_LOCK);
+    lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_set_style_radius(back, 3, 0);
     lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
     lv_obj_set_ext_click_area(back, 16);
 
