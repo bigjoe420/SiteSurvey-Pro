@@ -172,9 +172,9 @@ static void refresh(lv_timer_t*)
     do_refresh();
 }
 
-static void back_cb(lv_event_t*)
+static void do_back(lv_timer_t *t){ lv_timer_del(t); ui_home_load(); } static void back_cb(lv_event_t*)
 {
-    ui_home_load();
+    lv_timer_create(do_back, 1, nullptr);
 }
 
 lv_obj_t* ui_ble_create(void)
@@ -190,8 +190,6 @@ lv_obj_t* ui_ble_create(void)
     lv_obj_set_style_radius(back, 3, 0);
     lv_obj_add_flag(back, LV_OBJ_FLAG_FLOATING);
     lv_obj_add_flag(back, LV_OBJ_FLAG_PRESS_LOCK);
-    lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
-    lv_obj_set_style_radius(back, 3, 0);
     lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
     lv_obj_set_ext_click_area(back, 16);
 

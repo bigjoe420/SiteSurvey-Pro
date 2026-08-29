@@ -122,5 +122,5 @@ void lvgl_port_start_ui_task(void)
     // Prio 24: above Wi-Fi driver (prio 23) so LVGL never gets preempted
     // during render. The task yields every 10 ms via vTaskDelay, giving
     // Wi-Fi enough CPU between frames.
-    xTaskCreate(ui_task, "ui_task", 6144, nullptr, 24, nullptr);
+    xTaskCreate(ui_task, "ui_task", 8192, nullptr, 24, nullptr);
 }
