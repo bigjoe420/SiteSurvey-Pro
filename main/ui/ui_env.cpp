@@ -259,9 +259,9 @@ static void build_gauge(lv_obj_t* scr, Gauge* g, int x, int y)
     lv_obj_set_pos(hi, x + W - 48, TRACK_Y + TRACK_H + 4);
 }
 
-static void do_back(lv_timer_t *t){ lv_timer_del(t); ui_home_load(); } static void back_cb(lv_event_t*)
+static void back_cb(lv_event_t*)
 {
-    lv_timer_create(do_back, 1, nullptr);
+    ui_home_load();
 }
 
 lv_obj_t* ui_env_create(void)
@@ -270,19 +270,6 @@ lv_obj_t* ui_env_create(void)
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
 
-    lv_obj_t* back = lv_btn_create(scr);
-    lv_obj_set_size(back, 80, 40);
-    lv_obj_set_pos(back, 4, 4);
-    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
-    lv_obj_set_style_radius(back, 3, 0);
-    lv_obj_add_flag(back, LV_OBJ_FLAG_FLOATING);
-    lv_obj_add_flag(back, LV_OBJ_FLAG_PRESS_LOCK);
-    lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
-    lv_obj_set_ext_click_area(back, 16);
-
-    lv_obj_t* back_lbl = lv_label_create(back);
-    lv_label_set_text(back_lbl, "<");
-    lv_obj_center(back_lbl);
 
     const int Y0 = 66;
     s_status = lv_label_create(scr);
@@ -296,6 +283,17 @@ lv_obj_t* ui_env_create(void)
     build_gauge(scr, &s_gauges[3], 168, Y0 + 76);
 
     lv_timer_create(env_refresh, 500, nullptr);
+    lv_obj_t* back = lv_btn_create(scr);
+    lv_obj_set_size(back, 80, 40);
+    lv_obj_set_pos(back, 4, 4);
+    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_radius(back, 3, 0);
+    lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
+
+    lv_obj_t* back_lbl = lv_label_create(back);
+    lv_label_set_text(back_lbl, "<");
+    lv_obj_center(back_lbl);
+
     return scr;
 }
 
