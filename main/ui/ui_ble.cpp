@@ -172,9 +172,9 @@ static void refresh(lv_timer_t*)
     do_refresh();
 }
 
-static void do_back(lv_timer_t *t){ lv_timer_del(t); ui_home_load(); } static void back_cb(lv_event_t*)
+static void back_cb(lv_event_t*)
 {
-    lv_timer_create(do_back, 1, nullptr);
+    ui_home_load();
 }
 
 lv_obj_t* ui_ble_create(void)
@@ -183,19 +183,6 @@ lv_obj_t* ui_ble_create(void)
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
 
-    lv_obj_t* back = lv_btn_create(scr);
-    lv_obj_set_size(back, 80, 40);
-    lv_obj_set_pos(back, 4, 4);
-    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
-    lv_obj_set_style_radius(back, 3, 0);
-    lv_obj_add_flag(back, LV_OBJ_FLAG_FLOATING);
-    lv_obj_add_flag(back, LV_OBJ_FLAG_PRESS_LOCK);
-    lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
-    lv_obj_set_ext_click_area(back, 16);
-
-    lv_obj_t* back_lbl = lv_label_create(back);
-    lv_label_set_text(back_lbl, "<");
-    lv_obj_center(back_lbl);
 
     lv_obj_t* title = lv_label_create(scr);
     lv_label_set_text(title, "BLE DEVICES");
@@ -216,6 +203,17 @@ lv_obj_t* ui_ble_create(void)
     lv_obj_add_flag(s_list, LV_OBJ_FLAG_SCROLL_MOMENTUM);
     lv_obj_set_scroll_dir(s_list, LV_DIR_VER);
     lv_obj_set_scroll_snap_y(s_list, LV_SCROLL_SNAP_NONE);
+
+    lv_obj_t* back = lv_btn_create(scr);
+    lv_obj_set_size(back, 80, 40);
+    lv_obj_set_pos(back, 4, 4);
+    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_radius(back, 3, 0);
+    lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
+
+    lv_obj_t* back_lbl = lv_label_create(back);
+    lv_label_set_text(back_lbl, "<");
+    lv_obj_center(back_lbl);
 
     s_timer = lv_timer_create(refresh, 3000, nullptr);
     return scr;
