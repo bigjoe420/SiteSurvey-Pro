@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include "esp_log.h"
 #include "ui_spin3d.h"
 #include "ui_home.h"
 
@@ -78,6 +79,7 @@ static bool s_bme680_present;
 static bool s_env_visible;
 
 static lv_obj_t* s_status;
+static lv_timer_t* s_timer;
 
 void ui_env_post_env(const EnvSnapshot_t* snap, bool bme680_present)
 {
@@ -270,6 +272,22 @@ lv_obj_t* ui_env_create(void)
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
 
+    lv_obj_t* back = lv_btn_create(scr);
+    lv_obj_set_size(back, 80, 32);
+    lv_obj_set_pos(back, 4, 4);
+    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_radius(back, 3, 0);
+
+    lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
+    // ext_click_area 32 (was 24): same corner-cluster evidence as the list
+    // screens (2026-08-31 retest log, residual misses at x 84-88 / y 62-68
+    // below the old zone bottom y=60).  Zone now y<=68 / x<=116; nothing
+    // clickable exists in that strip on this screen.
+    lv_obj_set_ext_click_area(back, 32);
+
+    lv_obj_t* back_lbl = lv_label_create(back);
+    lv_label_set_text(back_lbl, "<");
+    lv_obj_center(back_lbl);
 
     const int Y0 = 66;
     s_status = lv_label_create(scr);
@@ -282,23 +300,16 @@ lv_obj_t* ui_env_create(void)
     build_gauge(scr, &s_gauges[2], 12, Y0 + 76);
     build_gauge(scr, &s_gauges[3], 168, Y0 + 76);
 
-    lv_timer_create(env_refresh, 500, nullptr);
-    lv_obj_t* back = lv_btn_create(scr);
-    lv_obj_set_size(back, 80, 40);
-    lv_obj_set_pos(back, 4, 4);
-    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
-    lv_obj_set_style_radius(back, 3, 0);
-    lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
-
-    lv_obj_t* back_lbl = lv_label_create(back);
-    lv_label_set_text(back_lbl, "<");
-    lv_obj_center(back_lbl);
-
+    s_timer = lv_timer_create(env_refresh, 500, nullptr);
     return scr;
 }
 
 void ui_env_set_visible(bool visible)
 {
     s_env_visible = visible;
+    if (s_timer) {
+        if (visible) lv_timer_resume(s_timer);
+        else         lv_timer_pause(s_timer);
+    }
     ui_spin3d_enable(visible);
 }

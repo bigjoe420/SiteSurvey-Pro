@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include "esp_log.h"
 #include "scan_engine.h"
 #include "ui_home.h"
 
@@ -68,6 +69,7 @@ static ChBar s_5g[N_5G];
 static lv_obj_t* s_total_lbl;
 static bool      s_visible;
 static char      s_footer[48];
+static lv_timer_t* s_timer;
 
 // -----------------------------------------------------------------------------
 // Helpers
@@ -282,6 +284,22 @@ lv_obj_t* ui_spectrum_create(void)
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
 
     // Back button
+    lv_obj_t* back = lv_btn_create(scr);
+    lv_obj_set_size(back, 80, 32);
+    lv_obj_set_pos(back, 4, 4);
+    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_radius(back, 3, 0);
+
+    lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
+    // ext_click_area 32 (was 24): same corner-cluster evidence as the list
+    // screens (2026-08-31 retest log, residual misses at x 84-88 / y 62-68
+    // below the old zone bottom y=60).  Zone now y<=68 / x<=116; nothing
+    // clickable exists in that strip on this screen.
+    lv_obj_set_ext_click_area(back, 32);
+
+    lv_obj_t* back_lbl = lv_label_create(back);
+    lv_label_set_text(back_lbl, "<");
+    lv_obj_center(back_lbl);
 
     // Title
     lv_obj_t* title = lv_label_create(scr);
@@ -313,23 +331,16 @@ lv_obj_t* ui_spectrum_create(void)
     lv_obj_set_pos(s_total_lbl, 8, 210);
     s_footer[0] = '\0';
 
-    lv_timer_create(refresh, 5000, nullptr);
-    lv_obj_t* back = lv_btn_create(scr);
-    lv_obj_set_size(back, 80, 40);
-    lv_obj_set_pos(back, 4, 4);
-    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
-    lv_obj_set_style_radius(back, 3, 0);
-    lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
-
-    lv_obj_t* back_lbl = lv_label_create(back);
-    lv_label_set_text(back_lbl, "<");
-    lv_obj_center(back_lbl);
-
+    s_timer = lv_timer_create(refresh, 5000, nullptr);
     return scr;
 }
 
 void ui_spectrum_set_visible(bool visible)
 {
     s_visible = visible;
+    if (s_timer) {
+        if (visible) lv_timer_resume(s_timer);
+        else         lv_timer_pause(s_timer);
+    }
     if (visible) do_refresh();
 }
