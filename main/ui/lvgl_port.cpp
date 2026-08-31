@@ -12,7 +12,7 @@
 
 static const char* TAG = "lvgl_port";
 
-// 1/10th of the screen per buffer, double buffered, in internal RAM
+// 1/10th of the screen per buffer, double buffered, in PSRAM
 static constexpr size_t BUF_ROWS = 48;
 static constexpr size_t BUF_SIZE = SSP_TFT_WIDTH * BUF_ROWS * sizeof(uint16_t);
 
@@ -122,5 +122,5 @@ void lvgl_port_start_ui_task(void)
     // Prio 24: above Wi-Fi driver (prio 23) so LVGL never gets preempted
     // during render. The task yields every 10 ms via vTaskDelay, giving
     // Wi-Fi enough CPU between frames.
-    xTaskCreate(ui_task, "ui_task", 8192, nullptr, 24, nullptr);
+    xTaskCreate(ui_task, "ui_task", 12288, nullptr, 24, nullptr);
 }

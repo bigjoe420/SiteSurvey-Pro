@@ -2,10 +2,15 @@
 
 #include <cstdio>
 #include <cstring>
+#include "esp_log.h"
 #include "scan_ble.h"
 #include "ui_home.h"
 
-#define MAX_ROWS 16
+#define MAX_ROWS 8
+
+// Build at most this many rows per do_refresh() call to avoid stalling
+// lv_timer_handler() with a burst of object creation.
+static constexpr int BUILD_BATCH = 2;
 
 typedef struct {
     lv_obj_t* row;
@@ -106,6 +111,7 @@ static void do_refresh(void)
     static BleScanResult_t devs[MAX_ROWS];
     int n = ble_scan_snapshot(devs, MAX_ROWS);
 
+    int built_this_call = 0;
     for (int i = 0; i < MAX_ROWS; i++) {
         Row* r = &s_rows[i];
         RowState* st = &s_state[i];
@@ -118,8 +124,12 @@ static void do_refresh(void)
             continue;
         }
 
+        // Lazy build: create row on first need, but cap per call to avoid
+        // stalling lv_timer_handler() with a burst of object creation.
         if (!r->row) {
+            if (built_this_call >= BUILD_BATCH) continue;
             build_row(s_list, r, i);
+            built_this_call++;
         }
 
         const BleScanResult_t* dev = &devs[i];
@@ -163,8 +173,23 @@ static void do_refresh(void)
             lv_label_set_text(r->info, info);
         }
     }
-    s_rows_built = true;
-    lv_obj_update_layout(s_list);
+
+    // Only force layout recalc if we actually built rows this call.
+    if (built_this_call > 0) {
+        lv_obj_update_layout(s_list);
+    }
+
+    // Check whether all needed rows are now built.
+    if (!s_rows_built) {
+        bool all_built = true;
+        for (int i = 0; i < n && i < MAX_ROWS; i++) {
+            if (!s_rows[i].row) { all_built = false; break; }
+        }
+        if (all_built) {
+            s_rows_built = true;
+            lv_timer_set_period(s_timer, 3000);  // restore normal 3 s refresh
+        }
+    }
 }
 
 static void refresh(lv_timer_t*)
@@ -183,16 +208,10 @@ lv_obj_t* ui_ble_create(void)
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
 
-
-    lv_obj_t* title = lv_label_create(scr);
-    lv_label_set_text(title, "BLE DEVICES");
-    lv_obj_set_style_text_color(title, lv_color_white(), 0);
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 16);
-
+    // List FIRST — back button created after so it sits on top in z-order
     s_list = lv_obj_create(scr);
-    lv_obj_set_size(s_list, 320, 192);
-    lv_obj_set_pos(s_list, 0, 48);
+    lv_obj_set_size(s_list, 320, 176);
+    lv_obj_set_pos(s_list, 0, 64);
     lv_obj_set_style_bg_opa(s_list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(s_list, 0, 0);
     lv_obj_set_style_pad_all(s_list, 2, 0);
@@ -204,12 +223,26 @@ lv_obj_t* ui_ble_create(void)
     lv_obj_set_scroll_dir(s_list, LV_DIR_VER);
     lv_obj_set_scroll_snap_y(s_list, LV_SCROLL_SNAP_NONE);
 
+    lv_obj_t* title = lv_label_create(scr);
+    lv_label_set_text(title, "BLE DEVICES");
+    lv_obj_set_style_text_color(title, lv_color_white(), 0);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 16);
+
+    // Back button LAST — natural top z-order, no move_foreground needed
     lv_obj_t* back = lv_btn_create(scr);
-    lv_obj_set_size(back, 80, 40);
+    lv_obj_set_size(back, 80, 32);
     lv_obj_set_pos(back, 4, 4);
     lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
     lv_obj_set_style_radius(back, 3, 0);
     lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
+    // ext_click_area 32 (was 24): retest capture 2026-08-31 showed 70/70
+    // in-zone presses clicked (zero firmware failures) and isolated the
+    // residual misses to one corner cluster at x 84-88 / y 62-68, 2-8 px
+    // below the old zone bottom (y=60).  Zone now reaches y=68 / x=116;
+    // the top 4 px of list row 1 (x<=116) becomes button — back is
+    // topmost, so it wins the hit test there.
+    lv_obj_set_ext_click_area(back, 32);
 
     lv_obj_t* back_lbl = lv_label_create(back);
     lv_label_set_text(back_lbl, "<");
@@ -227,6 +260,9 @@ void ui_ble_set_visible(bool visible)
         else         lv_timer_pause(s_timer);
     }
     if (visible && !s_rows_built) {
+        // Fast-build mode: 50 ms batches until all rows exist.
+        lv_timer_set_period(s_timer, 50);
+        lv_timer_reset(s_timer);
         do_refresh();
     }
 }

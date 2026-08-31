@@ -2,10 +2,15 @@
 
 #include <cstdio>
 #include <cstring>
+#include "esp_log.h"
 #include "scan_engine.h"
 #include "ui_home.h"
 
-#define MAX_ROWS 16
+#define MAX_ROWS 8
+
+// Build at most this many rows per do_refresh() call to avoid stalling
+// lv_timer_handler() with a burst of object creation.
+static constexpr int BUILD_BATCH = 2;
 
 typedef struct {
     lv_obj_t* row;
@@ -148,6 +153,7 @@ static void do_refresh(void)
     static ScanResult_t aps[MAX_ROWS];
     int n = scan_engine_snapshot(aps, MAX_ROWS);
 
+    int built_this_call = 0;
     for (int i = 0; i < MAX_ROWS; i++) {
         Row* r = &s_rows[i];
         RowState* st = &s_state[i];
@@ -160,9 +166,12 @@ static void do_refresh(void)
             continue;
         }
 
-        // Lazy build: create row on first need so ui_wifi_create() stays fast.
+        // Lazy build: create row on first need, but cap per call to avoid
+        // stalling lv_timer_handler() with a burst of object creation.
         if (!r->row) {
+            if (built_this_call >= BUILD_BATCH) continue;
             build_row(s_list, r, i);
+            built_this_call++;
         }
 
         const ScanResult_t* ap = &aps[i];
@@ -196,12 +205,23 @@ static void do_refresh(void)
             lv_label_set_text(r->info, info);
         }
     }
-    s_rows_built = true;
 
-    // Force LVGL to recalculate the list's content area now that rows have
-    // been created/shown.  With absolute positioning + lazy creation, the
-    // scrollable height may not be updated automatically.
-    lv_obj_update_layout(s_list);
+    // Only force layout recalc if we actually built rows this call.
+    if (built_this_call > 0) {
+        lv_obj_update_layout(s_list);
+    }
+
+    // Check whether all needed rows are now built.
+    if (!s_rows_built) {
+        bool all_built = true;
+        for (int i = 0; i < n && i < MAX_ROWS; i++) {
+            if (!s_rows[i].row) { all_built = false; break; }
+        }
+        if (all_built) {
+            s_rows_built = true;
+            lv_timer_set_period(s_timer, 5000);  // restore normal 5 s refresh
+        }
+    }
 
     // Update env overlay alongside Wi-Fi list
     if (s_env_overlay) {
@@ -225,6 +245,20 @@ lv_obj_t* ui_wifi_create(void)
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
 
+    // List FIRST — back button created after so it sits on top in z-order
+    s_list = lv_obj_create(scr);
+    lv_obj_set_size(s_list, 320, 176);
+    lv_obj_set_pos(s_list, 0, 64);
+    lv_obj_set_style_bg_opa(s_list, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(s_list, 0, 0);
+    lv_obj_set_style_pad_all(s_list, 2, 0);
+    lv_obj_set_style_pad_top(s_list, 2, 0);
+    lv_obj_set_style_pad_row(s_list, 0, 0);
+    lv_obj_set_scrollbar_mode(s_list, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_add_flag(s_list, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(s_list, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+    lv_obj_set_scroll_dir(s_list, LV_DIR_VER);
+    lv_obj_set_scroll_snap_y(s_list, LV_SCROLL_SNAP_NONE);
 
     // Environmental overlay — top-right, compact readout
     s_env_overlay = lv_label_create(scr);
@@ -233,36 +267,26 @@ lv_obj_t* ui_wifi_create(void)
     lv_obj_set_style_text_font(s_env_overlay, &lv_font_montserrat_14, 0);
     lv_obj_set_pos(s_env_overlay, 90, 16);
 
-    s_list = lv_obj_create(scr);
-    lv_obj_set_size(s_list, 320, 192);
-    lv_obj_set_pos(s_list, 0, 48);
-    lv_obj_set_style_bg_opa(s_list, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(s_list, 0, 0);
-    lv_obj_set_style_pad_all(s_list, 2, 0);
-    lv_obj_set_style_pad_top(s_list, 2, 0);
-    lv_obj_set_style_pad_row(s_list, 0, 0);
-    lv_obj_set_scrollbar_mode(s_list, LV_SCROLLBAR_MODE_OFF);
-    // Explicit scroll configuration: vertical only, no snap, momentum enabled.
-    // The default flags on a plain lv_obj should include SCROLLABLE, but we
-    // reinforce them here because lazy row creation + absolute positioning
-    // can leave the content area uncalculated until layout is forced.
-    lv_obj_add_flag(s_list, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_add_flag(s_list, LV_OBJ_FLAG_SCROLL_MOMENTUM);
-    lv_obj_set_scroll_dir(s_list, LV_DIR_VER);
-    lv_obj_set_scroll_snap_y(s_list, LV_SCROLL_SNAP_NONE);
-
-    // Rows are NOT built here — lazy creation in do_refresh() keeps this fast.
+    // Back button LAST — natural top z-order, no move_foreground needed
     lv_obj_t* back = lv_btn_create(scr);
-    lv_obj_set_size(back, 80, 40);
+    lv_obj_set_size(back, 80, 32);
     lv_obj_set_pos(back, 4, 4);
     lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
     lv_obj_set_style_radius(back, 3, 0);
     lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
+    // ext_click_area 32 (was 24): retest capture 2026-08-31 showed 70/70
+    // in-zone presses clicked (zero firmware failures) and isolated the
+    // residual misses to one corner cluster at x 84-88 / y 62-68, 2-8 px
+    // below the old zone bottom (y=60).  Zone now reaches y=68 / x=116;
+    // the top 4 px of list row 1 (x<=116) becomes button — back is
+    // topmost, so it wins the hit test there.
+    lv_obj_set_ext_click_area(back, 32);
 
     lv_obj_t* back_lbl = lv_label_create(back);
     lv_label_set_text(back_lbl, "<");
     lv_obj_center(back_lbl);
 
+    // Rows are NOT built here — lazy creation in do_refresh() keeps this fast.
     s_timer = lv_timer_create(refresh, 5000, nullptr);
     return scr;
 }
@@ -275,8 +299,9 @@ void ui_wifi_set_visible(bool visible)
         else         lv_timer_pause(s_timer);
     }
     if (visible && !s_rows_built) {
-        // Immediate population if scan results already exist; prevents
-        // the black-list stare while waiting for the 5 s timer.
+        // Fast-build mode: 50 ms batches until all rows exist.
+        lv_timer_set_period(s_timer, 50);
+        lv_timer_reset(s_timer);
         do_refresh();
     }
 }

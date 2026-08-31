@@ -4,8 +4,8 @@
 #include "driver/spi_master.h"
 #include "esp_check.h"
 #include "esp_log.h"
-#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 
 static const char* TAG = "touch";
 
@@ -100,31 +100,51 @@ bool touch_read(int16_t* x, int16_t* y)
     return true;
 }
 
-// ---- Background sampler ----
+// ---- Background sampler task (prio 24, tied with ui_task at the top) ----
+// Previously this was an esp_timer callback doing blocking SPI — bad practice.
+// A dedicated task lets the SPI bus driver arbitrate fairly with display DMA.
 
-static void sampler_cb(void* arg)
+static void sampler_task(void*)
 {
-    int16_t x = 0, y = 0;
-    bool pressed = touch_read(&x, &y);
+    const TickType_t period = pdMS_TO_TICKS(20);  // 50 Hz = exactly 2 ticks @ 100 Hz
+    TickType_t last = xTaskGetTickCount();
+    while (true) {
+        int16_t x = 0, y = 0;
+        bool pressed = touch_read(&x, &y);
 
-    portENTER_CRITICAL(&s_sample_mux);
-    s_sample_pressed = pressed;
-    if (pressed) {
-        s_sample_x = x;
-        s_sample_y = y;
+        portENTER_CRITICAL(&s_sample_mux);
+        s_sample_pressed = pressed;
+        if (pressed) {
+            s_sample_x = x;
+            s_sample_y = y;
+        }
+        portEXIT_CRITICAL(&s_sample_mux);
+
+        // Phase-locked cadence: wakes exactly one period after the previous
+        // wake, regardless of how long touch_read() took.  Plain vTaskDelay
+        // would add execution time to every period and quantize the delay to
+        // (10, 20] ms at the 100 Hz tick.  If a display-DMA flood stalls a
+        // sample past the period, DelayUntil returns immediately and the loop
+        // re-syncs within a few iterations (each still bounded by SPI time).
+        vTaskDelayUntil(&last, period);
     }
-    portEXIT_CRITICAL(&s_sample_mux);
 }
 
 esp_err_t touch_start_sampler(void)
 {
-    esp_timer_create_args_t args = {};
-    args.callback = sampler_cb;
-    args.name = "touch_sampler";
-    esp_timer_handle_t timer;
-    ESP_RETURN_ON_ERROR(esp_timer_create(&args, &timer), TAG, "sampler create failed");
-    ESP_RETURN_ON_ERROR(esp_timer_start_periodic(timer, 20000), TAG, "sampler start failed");
-    ESP_LOGI(TAG, "touch sampler running @ 50 Hz");
+    // Prio 24: ties ui_task at the top of the user range
+    // (configMAX_PRIORITIES=25, so 24 is the max valid priority), above the
+    // Wi-Fi driver (23), esp_timer/lv_tick (22) and the NimBLE host (21).
+    // Blocking SPI transactions sleep on the driver semaphore, so the sampler
+    // cannot starve LVGL — the priority only guarantees its next transaction
+    // is issued the instant the shared SPI bus frees.  A sample window stalled
+    // longer than a tap's press duration erases the tap entirely (no PRESSED,
+    // no CLICKED), which is why sampling sits at the top of the ladder.
+    BaseType_t ok = xTaskCreate(sampler_task, "touch_sampler",
+                                2048, nullptr, 24, nullptr);
+    ESP_RETURN_ON_FALSE(ok == pdPASS, ESP_ERR_NO_MEM, TAG,
+                        "sampler task create failed");
+    ESP_LOGI(TAG, "touch sampler task running @ 50 Hz");
     return ESP_OK;
 }
 
