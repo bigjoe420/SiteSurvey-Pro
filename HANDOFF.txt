@@ -1,18 +1,79 @@
-SiteSurvey Pro — Session Handoff (2026-08-26 22:45)
+SiteSurvey Pro — Session Handoff (2026-08-31 03:30)
 Workspace: D:\SiteSurvey Pro | Target: ESP32-C5 / NM-CYD-C5 | IDF: v6.0.1 | Port: COM7
-Current code state: HEAD a0fd539 (pushed to origin/main)
+Current code state: HEAD b727782 + handoff doc (pushed to origin/main)
 Docs (KIMI.md, ROADMAP.md, PROGRESS.md) are local-only via .git/info/exclude.
 
-Owner-confirmed baseline: Touch tap responsiveness "looks good" — first-tap entry/exit on all tabs. Wi-Fi list scroll is smooth and responsive. This is the new working baseline.
+Owner-confirmed baseline (2026-08-31): UI freezes GONE. Back button first-tap
+reliable on ALL screens (wifi / ble / env / spectrum / home) — "feels much
+better." Carried forward from prior baseline: BLE scan list functional; Wi-Fi
+list scroll smooth; BLE + Wi-Fi + BME680 + GPS coexist without boot loop.
 
-What this session locked in (commits 871c9a9 + a0fd539):
-- Background 50 Hz touch sampler (touch.cpp) — esp_timer periodic callback reads XPT2046 independently of LVGL, stores in critical-section buffer
-- touch_read_latest() (touch.h/cpp) — lock-free zero-SPI buffer read for LVGL's touch_read_cb()
-- lvgl_port.cpp simplified — removed s_flush_in_progress, flush_done_cb, display_register_flush_done_cb() call; touch_read_cb() now just reads the buffer
-- Removed timing instrumentation from lvgl_port.cpp (audit complete)
-- ui_wifi.cpp scroll fixes: LV_OBJ_FLAG_SCROLL_CHAIN on rows, explicit SCROLLABLE/MOMENTUM/DIR_VER/SNAP_NONE on list, lv_obj_update_layout() after lazy creation, timer pause/resume on visibility
-- KIMI.md §5.14 updated with Corollary 21
-- PROGRESS.md updated with milestone entry
+=====================================================================
+What the 2026-08-29 → 08-31 arc locked in (commit b727782)
+=====================================================================
+Note on history: origin/main had three abandoned 2026-08-29 experiment commits
+(ae6628d FLOATING+PRESS_LOCK, 8ee6122 crash-fix attempt, deb8616 remove
+ext_click_area) from an earlier failed attack on the same symptom — the owner
+had already reset onto e3f5d8b and ordered the full audit instead. b727782 was
+rebased on top of them (they remain in history); every conflict resolved in
+favor of the owner-verified code, merged tree proven byte-identical to the
+on-device tested state.
+- touch.cpp: esp_timer sampler replaced by dedicated FreeRTOS task, prio 24
+  (max valid at configMAX_PRIORITIES=25; above Wi-Fi 23, esp_timer/lv_tick 22,
+  NimBLE 21). vTaskDelayUntil phase-locked 50 Hz cadence.
+- lvgl_port.cpp: ui_task stack 6144 → 12288 (watchdog fix from 08-27, finally
+  committed); PSRAM comment correction.
+- ui_wifi/ui_ble: MAX_ROWS 16→8, lazy row build (BUILD_BATCH=2), list y=48→64,
+  back button 80×40→80×32 created LAST (topmost), header blocker removed.
+- ui_env/ui_spectrum: back button 80×40→80×32, refresh timer pause/resume on
+  visibility (also from 08-27, finally committed).
+- All four back buttons: ext_click_area 16 → 32. Hit zone now y≤68 / x≤116.
+
+=====================================================================
+The back-button multi-tap saga — RESOLVED 2026-08-31 (read this first)
+=====================================================================
+Symptom: back button needed multiple taps 30–50% on Wi-Fi/BLE; other screens fine.
+Root-cause chain, in order of discovery:
+1. Sampler hardening (prio 24 + vTaskDelayUntil) — correct on its own merits,
+   kept permanently, but NOT the cause of the misses.
+2. Temporary DIAG instrumentation (touch DOWN/UP logging + PRESSED/RELEASED/
+   CLICKED callbacks on all four back buttons) EXONERATED the firmware:
+   70/70 in-zone PRESSED → CLICKED, zero sample loss, zero event-semantics
+   failures. Every genuine miss landed BELOW the hit zone.
+3. Geometry fix in two steps: ext 8→24 killed the y45–59 dead strip (~97.5%
+   first-tap); residual corner cluster x84–88/y62–68 (habitual thumb landing,
+   2–8 px below zone bottom) killed by ext 24→32. Zone y≤68/x≤116; back button
+   topmost so it wins the overlap with list row 1's top 4 px.
+4. FREEZE INCIDENT (08-31): "tap tap tap, nothing, then it works" — caused by
+   per-tap diag logs + CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y + no
+   monitor draining COM7: the secondary console BLOCKS the calling task when
+   unread, stalling ui_task. Diag fully stripped; freezes gone (owner-verified).
+   LESSON: never leave per-event logging enabled on this console config without
+   a monitor attached. One-line hardening candidate: disable
+   CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG (not applied — owner's call).
+
+=====================================================================
+Environment notes (IMPORTANT — do not rediscover)
+=====================================================================
+- An Application Control policy (Smart App Control / WDAC) blocks the XTENSA
+  toolchain on this PC (WinError 4551). RISC-V toolchains (esp32c5/esp32p4)
+  are UNAFFECTED — all current targets build fine. Workaround already applied:
+  C:\Users\joeky\.espressif\idf-env.json "targets" trimmed to
+  ["esp32p4","esp32c5"] so idf_tools.py export stops hard-failing (backup in
+  Kimi workspace fix3-diag/idf-env.json.bak). The policy itself is the owner's
+  to investigate; do NOT reinstall toolchains.
+- Boot-log "Compile time" is STALE on incremental builds (esp_app_desc.c.obj
+  only regenerates on full builds). Verify incremental flashes via binary
+  size + flash hash, not the banner.
+- Canonical build/flash/monitor (Git Bash):
+  C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/idfenv.ps1 idf.py build
+  ... idf.py -p COM7 flash
+  ... -File tools/capture_boot.ps1 -Port COM7 -Seconds 40   (resets board; grep -a)
+- Edit discipline (Corollary 20): stage edits in the Kimi workspace, verify
+  with git diff --no-index staged-vs-deployed, then cp into D:. One fix at a
+  time; build/flash/boot-verify; hard pause for owner physical test.
+- If COM7 is busy on flash: leftover idf_monitor python processes — stop them
+  first (and remember the secondary-console lesson above before re-attaching).
 
 Key truths to carry forward (KIMI.md §5.14):
 Corollary 11: Non-blocking DMA flush is mandatory for responsive touch on 20 MHz SPI
@@ -26,18 +87,23 @@ Corollary 18: Shared counter synchronization must protect BOTH sides with portEN
 Corollary 19: Timeouts on DMA/busy counters must account for multi-flush frames (≥500 ms)
 Corollary 20: Post-Change Code Review is mandatory after every edit
 Corollary 21: Touch sampling MUST be decoupled from lv_timer_handler() on shared-SPI architectures — background timer + buffer, never SPI inside UI task
+Corollary 22: On chips with <150 KB internal RAM and 8 MB PSRAM, LVGL draw buffers MUST live in PSRAM (MALLOC_CAP_SPIRAM)
+New lessons not yet codified: (a) "dead button" on a corner target = suspect
+hit-zone geometry before firmware timing; (b) secondary USB-serial console
+blocks when undrained — per-event logs require an attached monitor.
 
-Build/flash commands:
-powershell
-C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/idfenv.ps1 idf.py build
-idf.py -p COM7 flash
-tools/capture_boot.ps1 -Port COM7 -Seconds 40
-
-Queued features (pick one):
-- BLE Device screen — BLE scan list (MAC, name, RSSI, manufacturer data) (ROADMAP §4.1, screen #2)
+Queued features (owner put NEW FEATURES ON HOLD 2026-08-30 — code quality first):
 - GPS Status screen — Live lat/lon, fix quality, track plot (ROADMAP §4.1, screen #4)
 - Alert Log screen — Target matches, threshold breaches (ROADMAP §4.1, screen #6)
 - Settings + Data Manager — Scan config, export logs, SD status (ROADMAP §4.1, screen #7)
 - Power management & battery life optimization (Phase 3)
+
+Parked / hygiene (only if owner asks):
+- Disable CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG (hardening, above)
+- HANDOFF/HANDOFF-adjacent docs: PROGRESS.md milestone for this arc logged 08-31
+- Dead display_register_flush_done_cb reference in lvgl_port.cpp (harmless)
+- max_transfer_sz=15360 is DELIBERATE (comment guard) — do NOT "fix" it
+- Untracked scratch debris in repo root (analyze_*.py, fix_*.py, capture_*.py,
+  monitor*.py/.ps1/.txt) — session leftovers, safe to delete with owner OK
 
 Read order on session start: KIMI.md §1, then ROADMAP.md, then PROGRESS.md §1.
