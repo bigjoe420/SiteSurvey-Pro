@@ -1,109 +1,78 @@
-SiteSurvey Pro — Session Handoff (2026-08-31 03:30)
+================================================================================
+SiteSurvey Pro — Session Handoff (2026-09-04 05:20)
+================================================================================
 Workspace: D:\SiteSurvey Pro | Target: ESP32-C5 / NM-CYD-C5 | IDF: v6.0.1 | Port: COM7
-Current code state: HEAD b727782 + handoff doc (pushed to origin/main)
-Docs (KIMI.md, ROADMAP.md, PROGRESS.md) are local-only via .git/info/exclude.
+GitHub: origin/main @ e2be03b (pushed)
 
-Owner-confirmed baseline (2026-08-31): UI freezes GONE. Back button first-tap
-reliable on ALL screens (wifi / ble / env / spectrum / home) — "feels much
-better." Carried forward from prior baseline: BLE scan list functional; Wi-Fi
-list scroll smooth; BLE + Wi-Fi + BME680 + GPS coexist without boot loop.
+================================================================================
+What just landed (commits since last handoff)
+================================================================================
+f0516f6 — Add WS2812 RGB LED driver + alert hook
+  - New module: main/led/led_rgb.cpp + led_rgb.h
+  - RMT TX driver on GPIO 27 (GRB order, 10 MHz resolution, copy encoder)
+  - alert_engine.cpp calls led_rgb_alert() on every target match
+  - LED flashes red for 100 ms on SSID/BSSID/RSSI-threshold alert
+  - Verified on-device: build clean, flash to COM7, LED responds
 
-=====================================================================
-What the 2026-08-29 → 08-31 arc locked in (commit b727782)
-=====================================================================
-Note on history: origin/main had three abandoned 2026-08-29 experiment commits
-(ae6628d FLOATING+PRESS_LOCK, 8ee6122 crash-fix attempt, deb8616 remove
-ext_click_area) from an earlier failed attack on the same symptom — the owner
-had already reset onto e3f5d8b and ordered the full audit instead. b727782 was
-rebased on top of them (they remain in history); every conflict resolved in
-favor of the owner-verified code, merged tree proven byte-identical to the
-on-device tested state.
-- touch.cpp: esp_timer sampler replaced by dedicated FreeRTOS task, prio 24
-  (max valid at configMAX_PRIORITIES=25; above Wi-Fi 23, esp_timer/lv_tick 22,
-  NimBLE 21). vTaskDelayUntil phase-locked 50 Hz cadence.
-- lvgl_port.cpp: ui_task stack 6144 → 12288 (watchdog fix from 08-27, finally
-  committed); PSRAM comment correction.
-- ui_wifi/ui_ble: MAX_ROWS 16→8, lazy row build (BUILD_BATCH=2), list y=48→64,
-  back button 80×40→80×32 created LAST (topmost), header blocker removed.
-- ui_env/ui_spectrum: back button 80×40→80×32, refresh timer pause/resume on
-  visibility (also from 08-27, finally committed).
-- All four back buttons: ext_click_area 16 → 32. Hit zone now y≤68 / x≤116.
+e2be03b — Fix RMT struct field order and BIT0/BIT1 macro collision
+  - Renamed BIT0/BIT1 → SYM_ZERO/SYM_ONE (conflicted with esp_bit_defs.h macros)
+  - Fixed rmt_symbol_word_t field order: duration0, level0, duration1, level1
+  - Fixed rmt_tx_channel_config_t field order to match ESP-IDF v6.0.1 struct
+  - Added esp_check.h include for ESP_RETURN_ON_ERROR
 
-=====================================================================
-The back-button multi-tap saga — RESOLVED 2026-08-31 (read this first)
-=====================================================================
-Symptom: back button needed multiple taps 30–50% on Wi-Fi/BLE; other screens fine.
-Root-cause chain, in order of discovery:
-1. Sampler hardening (prio 24 + vTaskDelayUntil) — correct on its own merits,
-   kept permanently, but NOT the cause of the misses.
-2. Temporary DIAG instrumentation (touch DOWN/UP logging + PRESSED/RELEASED/
-   CLICKED callbacks on all four back buttons) EXONERATED the firmware:
-   70/70 in-zone PRESSED → CLICKED, zero sample loss, zero event-semantics
-   failures. Every genuine miss landed BELOW the hit zone.
-3. Geometry fix in two steps: ext 8→24 killed the y45–59 dead strip (~97.5%
-   first-tap); residual corner cluster x84–88/y62–68 (habitual thumb landing,
-   2–8 px below zone bottom) killed by ext 24→32. Zone y≤68/x≤116; back button
-   topmost so it wins the overlap with list row 1's top 4 px.
-4. FREEZE INCIDENT (08-31): "tap tap tap, nothing, then it works" — caused by
-   per-tap diag logs + CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG=y + no
-   monitor draining COM7: the secondary console BLOCKS the calling task when
-   unread, stalling ui_task. Diag fully stripped; freezes gone (owner-verified).
-   LESSON: never leave per-event logging enabled on this console config without
-   a monitor attached. One-line hardening candidate: disable
-   CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG (not applied — owner's call).
+================================================================================
+Current code state
+================================================================================
+- HEAD: e2be03b on origin/main
+- Binary: 0x1bf6b0 (~1.8 MB), 13% free in app partition
+- Build: verified clean compile via PowerShell idfenv.ps1
+- Flash: verified on COM7, hash verified, hard reset via RTS
+- Docs: KIMI.md, ROADMAP.md, PROGRESS.md are local-only via .git/info/exclude
+  (ROADMAP.md was cleaned of duplicate Phase entries this session)
 
-=====================================================================
-Environment notes (IMPORTANT — do not rediscover)
-=====================================================================
-- An Application Control policy (Smart App Control / WDAC) blocks the XTENSA
-  toolchain on this PC (WinError 4551). RISC-V toolchains (esp32c5/esp32p4)
-  are UNAFFECTED — all current targets build fine. Workaround already applied:
-  C:\Users\joeky\.espressif\idf-env.json "targets" trimmed to
-  ["esp32p4","esp32c5"] so idf_tools.py export stops hard-failing (backup in
-  Kimi workspace fix3-diag/idf-env.json.bak). The policy itself is the owner's
-  to investigate; do NOT reinstall toolchains.
-- Boot-log "Compile time" is STALE on incremental builds (esp_app_desc.c.obj
-  only regenerates on full builds). Verify incremental flashes via binary
-  size + flash hash, not the banner.
-- Canonical build/flash/monitor (Git Bash):
-  C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe -NoProfile -ExecutionPolicy Bypass -File tools/idfenv.ps1 idf.py build
-  ... idf.py -p COM7 flash
-  ... -File tools/capture_boot.ps1 -Port COM7 -Seconds 40   (resets board; grep -a)
-- Edit discipline (Corollary 20): stage edits in the Kimi workspace, verify
-  with git diff --no-index staged-vs-deployed, then cp into D:. One fix at a
-  time; build/flash/boot-verify; hard pause for owner physical test.
-- If COM7 is busy on flash: leftover idf_monitor python processes — stop them
-  first (and remember the secondary-console lesson above before re-attaching).
+================================================================================
+Feature status snapshot
+================================================================================
+Phase 2 (Feature Expansion) — COMPLETE
+  ✅ Home screen 2×4 color block grid
+  ✅ GPS Status screen
+  ✅ Alert Log screen
+  ✅ Settings screen (NVS-backed target SSID list, keyboard input)
+  ✅ Alert engine with real-time match + LED flash
+  ✅ Dual-band concurrent scan (channel_bitmap, 2.4G + 5G)
+  ✅ GPS last-known-position cache for scan-log tagging
+  ✅ Navigation debounce (150 ms on all home buttons)
+  ✅ PSRAM LVGL pool (256 KB) + TLSF max pool fix + ASSERT_NULL disabled
 
-Key truths to carry forward (KIMI.md §5.14):
-Corollary 11: Non-blocking DMA flush is mandatory for responsive touch on 20 MHz SPI
-Corollary 12: Forward nav = PRESSED, Back nav = CLICKED
-Corollary 13: Lazy widget creation when init-time object count blocks UI task
-Corollary 14: Adaptive lv_timer_handler() sleep caused black screen — fixed 10 ms only
-Corollary 15: Animations on high-frequency refresh widgets are toxic on shared SPI buses — prefer LV_ANIM_OFF with change guards
-Corollary 16: A lv_timer that only gates on a boolean flag is NOT free when hidden — must use lv_timer_pause()/lv_timer_resume()
-Corollary 17: Canvas-based animations are the most expensive widget type on ESP32-C5
-Corollary 18: Shared counter synchronization must protect BOTH sides with portENTER_CRITICAL
-Corollary 19: Timeouts on DMA/busy counters must account for multi-flush frames (≥500 ms)
-Corollary 20: Post-Change Code Review is mandatory after every edit
-Corollary 21: Touch sampling MUST be decoupled from lv_timer_handler() on shared-SPI architectures — background timer + buffer, never SPI inside UI task
-Corollary 22: On chips with <150 KB internal RAM and 8 MB PSRAM, LVGL draw buffers MUST live in PSRAM (MALLOC_CAP_SPIRAM)
-New lessons not yet codified: (a) "dead button" on a corner target = suspect
-hit-zone geometry before firmware timing; (b) secondary USB-serial console
-blocks when undrained — per-event logs require an attached monitor.
+Phase 3 (Polish & Hardening) — ACTIVE
+  ⏸️ On-device RSSI graphing (top priority next session)
+  ⏸️ Power management & battery life optimization
+  ⏸️ UI themes (outdoor high-contrast mode)
+  ⏸️ Configurable scan filters
+  ⏸️ Firmware update mechanism (OTA or USB)
+  ⏸️ On-device scan report generation
 
-Queued features (owner put NEW FEATURES ON HOLD 2026-08-30 — code quality first):
-- GPS Status screen — Live lat/lon, fix quality, track plot (ROADMAP §4.1, screen #4)
-- Alert Log screen — Target matches, threshold breaches (ROADMAP §4.1, screen #6)
-- Settings + Data Manager — Scan config, export logs, SD status (ROADMAP §4.1, screen #7)
-- Power management & battery life optimization (Phase 3)
+================================================================================
+Known gaps / next up (owner's call)
+================================================================================
+- GPS antenna not attached — sky-view fix validation pending
+- RSSI-over-time graphing deferred to Phase 3 (recommended next feature)
+- ROADMAP.md refreshed this session; KIMI.md/PROGRESS.md still local-only
+- Settings LED toggle (disable alert flash) not yet implemented
 
-Parked / hygiene (only if owner asks):
-- Disable CONFIG_ESP_CONSOLE_SECONDARY_USB_SERIAL_JTAG (hardening, above)
-- HANDOFF/HANDOFF-adjacent docs: PROGRESS.md milestone for this arc logged 08-31
-- Dead display_register_flush_done_cb reference in lvgl_port.cpp (harmless)
-- max_transfer_sz=15360 is DELIBERATE (comment guard) — do NOT "fix" it
-- Untracked scratch debris in repo root (analyze_*.py, fix_*.py, capture_*.py,
-  monitor*.py/.ps1/.txt) — session leftovers, safe to delete with owner OK
+================================================================================
+Critical lessons for next session
+================================================================================
+1. RMT struct field order matters: rmt_symbol_word_t = {duration0, level0,
+   duration1, level1}. Designated initializers must match declaration order.
+2. BIT0/BIT1 are macros in esp_bit_defs.h. Never use them as variable names.
+3. ESP_RETURN_ON_ERROR requires #include "esp_check.h".
+4. Build via: powershell -File tools/idfenv.ps1 idf.py build
+5. Flash via: powershell -File tools/idfenv.ps1 idf.py flash -p COM7
 
-Read order on session start: KIMI.md §1, then ROADMAP.md, then PROGRESS.md §1.
+================================================================================
+Read order on session start
+================================================================================
+1. KIMI.md §1 (session quickstart + commandments)
+2. ROADMAP.md (feature status — Phase 3 now active)
+3. PROGRESS.md §1 (milestone history — newest first)
