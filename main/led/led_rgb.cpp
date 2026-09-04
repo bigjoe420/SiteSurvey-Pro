@@ -1,6 +1,7 @@
 #include "led_rgb.h"
 #include "board_pins.h"
 #include "esp_log.h"
+#include "esp_check.h"
 #include "driver/rmt_tx.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -13,19 +14,26 @@ static rmt_encoder_handle_t s_enc  = nullptr;
 #define RES_HZ  (10 * 1000 * 1000)   // 10 MHz = 100 ns per tick
 
 // WS2812B-ish timing (conservative, works with 3.3 V logic)
-static const rmt_symbol_word_t BIT0 = {
-    .level0 = 1, .duration0 = 4,   // 400 ns HIGH
-    .level1 = 0, .duration1 = 9,   // 900 ns LOW
+// rmt_symbol_word_t layout: duration0(15), level0(1), duration1(15), level1(1)
+static const rmt_symbol_word_t SYM_ZERO = {
+    .duration0 = 4,
+    .level0    = 1,   // 400 ns HIGH
+    .duration1 = 9,
+    .level1    = 0,   // 900 ns LOW
 };
 
-static const rmt_symbol_word_t BIT1 = {
-    .level0 = 1, .duration0 = 9,   // 900 ns HIGH
-    .level1 = 0, .duration1 = 4,   // 400 ns LOW
+static const rmt_symbol_word_t SYM_ONE = {
+    .duration0 = 9,
+    .level0    = 1,   // 900 ns HIGH
+    .duration1 = 4,
+    .level1    = 0,   // 400 ns LOW
 };
 
 static const rmt_symbol_word_t RESET_SYM = {
-    .level0 = 0, .duration0 = 500, // 50 us LOW (latch)
-    .level1 = 0, .duration1 = 0,
+    .duration0 = 500, // 50 us LOW (latch)
+    .level0    = 0,
+    .duration1 = 0,
+    .level1    = 0,
 };
 
 // ---------------------------------------------------------------------------
@@ -35,11 +43,13 @@ static const rmt_symbol_word_t RESET_SYM = {
 esp_err_t led_rgb_init(void)
 {
     rmt_tx_channel_config_t chan_cfg = {
-        .clk_src           = RMT_CLK_SRC_DEFAULT,
         .gpio_num          = SSP_LED_RGB,
-        .mem_block_symbols = 64,
+        .clk_src           = RMT_CLK_SRC_DEFAULT,
         .resolution_hz     = RES_HZ,
+        .mem_block_symbols = 64,
         .trans_queue_depth = 4,
+        .intr_priority     = 0,
+        .flags             = {},
     };
     ESP_RETURN_ON_ERROR(rmt_new_tx_channel(&chan_cfg, &s_chan), TAG, "rmt channel");
 
@@ -66,12 +76,15 @@ void led_rgb_set(uint8_t r, uint8_t g, uint8_t b)
 
     for (int byte = 0; byte < 3; byte++) {
         for (int bit = 7; bit >= 0; bit--) {
-            symbols[idx++] = (grb[byte] >> bit) & 1 ? BIT1 : BIT0;
+            symbols[idx++] = (grb[byte] >> bit) & 1 ? SYM_ONE : SYM_ZERO;
         }
     }
     symbols[idx++] = RESET_SYM;
 
-    rmt_transmit_config_t tx_cfg = { .loop_count = 0 };
+    rmt_transmit_config_t tx_cfg = {
+        .loop_count = 0,
+        .flags      = {},
+    };
     rmt_transmit(s_chan, s_enc, symbols, idx * sizeof(symbols[0]), &tx_cfg);
     rmt_tx_wait_all_done(s_chan, pdMS_TO_TICKS(100));
 }
