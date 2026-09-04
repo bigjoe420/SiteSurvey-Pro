@@ -5,6 +5,7 @@ idf_component_register(
          "ui/lvgl_port.cpp"
          "ui/ui_home.cpp"
          "ui/ui_wifi.cpp"
+         "ui/ui_wifi_detail.cpp"
          "ui/ui_ble.cpp"
          "ui/ui_env.cpp"
          "ui/ui_spectrum.cpp"

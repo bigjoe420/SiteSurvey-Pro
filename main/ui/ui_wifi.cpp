@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "scan_engine.h"
 #include "ui_home.h"
+#include "ui_wifi_detail.h"
 
 #define MAX_ROWS 8
 
@@ -24,6 +25,10 @@ typedef struct {
     int8_t rssi;
     char ssid[33];
     char info[48];
+    uint8_t bssid[6];
+    uint8_t channel;
+    wifi_auth_mode_t authmode;
+    ssp_rssi_tier_t severity;
 } RowState;
 
 static Row        s_rows[MAX_ROWS];
@@ -32,6 +37,8 @@ static lv_obj_t*  s_list;
 static bool       s_wifi_visible;
 static bool       s_rows_built;
 static lv_timer_t* s_timer;
+static lv_obj_t*  s_detail_scr = nullptr;
+static lv_obj_t*  s_scr = nullptr;
 
 // Environmental overlay
 static lv_obj_t*  s_env_overlay;
@@ -63,6 +70,10 @@ static const lv_color_t TIER_COLORS[] = {
 #define COL_SSID_W  120
 #define COL_INFO_X  180
 #define COL_INFO_W  130
+
+// Forward declarations
+static void row_click_cb(lv_event_t* e);
+static void build_row(lv_obj_t* parent, Row* r, int idx);
 
 static void build_row(lv_obj_t* parent, Row* r, int idx)
 {
@@ -99,6 +110,10 @@ static void build_row(lv_obj_t* parent, Row* r, int idx)
     lv_obj_set_style_text_color(r->info, lv_color_hex(0xE8E8E8), 0);
     lv_obj_set_style_text_align(r->info, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_pos(r->info, COL_INFO_X, (ROW_H - lv_font_get_line_height(&lv_font_montserrat_14)) / 2);
+
+    // Make row clickable for detail view; LV_EVENT_SHORT_CLICKED avoids scroll conflict
+    lv_obj_add_flag(r->row, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(r->row, row_click_cb, LV_EVENT_SHORT_CLICKED, nullptr);
 }
 
 static void update_env_overlay(void)
@@ -204,6 +219,13 @@ static void do_refresh(void)
             strcpy(st->info, info);
             lv_label_set_text(r->info, info);
         }
+        // Sync BSSID and metadata for detail screen
+        if (memcmp(st->bssid, ap->bssid, 6) != 0) {
+            memcpy(st->bssid, ap->bssid, 6);
+        }
+        st->channel = ap->channel;
+        st->authmode = ap->authmode;
+        st->severity = ap->severity;
     }
 
     // Only force layout recalc if we actually built rows this call.
@@ -237,6 +259,39 @@ static void refresh(lv_timer_t*)
 static void back_cb(lv_event_t*)
 {
     ui_home_load();
+}
+
+static void detail_back_cb(lv_event_t*)
+{
+    lv_screen_load(s_scr);
+    ui_wifi_set_visible(true);
+    ui_wifi_detail_set_visible(false);
+}
+
+static void row_click_cb(lv_event_t* e)
+{
+    lv_obj_t* target = (lv_obj_t*)lv_event_get_current_target(e);
+    for (int i = 0; i < MAX_ROWS; i++) {
+        if (s_rows[i].row == target && s_state[i].shown) {
+            WifiApInfo_t info = {};
+            strncpy(info.ssid, s_state[i].ssid, sizeof(info.ssid) - 1);
+            memcpy(info.bssid, s_state[i].bssid, 6);
+            info.channel = s_state[i].channel;
+            info.rssi = s_state[i].rssi;
+            info.authmode = s_state[i].authmode;
+            info.severity = s_state[i].severity;
+
+            if (!s_detail_scr) {
+                s_detail_scr = ui_wifi_detail_create(&info, detail_back_cb);
+            } else {
+                ui_wifi_detail_update(&info);
+            }
+            lv_screen_load(s_detail_scr);
+            ui_wifi_set_visible(false);
+            ui_wifi_detail_set_visible(true);
+            break;
+        }
+    }
 }
 
 lv_obj_t* ui_wifi_create(void)
@@ -288,6 +343,7 @@ lv_obj_t* ui_wifi_create(void)
 
     // Rows are NOT built here — lazy creation in do_refresh() keeps this fast.
     s_timer = lv_timer_create(refresh, 5000, nullptr);
+    s_scr = scr;
     return scr;
 }
 

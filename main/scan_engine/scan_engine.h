@@ -20,6 +20,8 @@ typedef enum {
 
 static constexpr char SSP_RSSI_TIER_CHAR[] = {'S', 'M', 'W', 'X'};
 
+#define RSSI_HISTORY_LEN 32
+
 // One scan observation. Posted to scan_queue (depth 16) per AP per cycle.
 // Band is implicit: channel <= 14 is 2.4 GHz, anything above is 5 GHz.
 typedef struct {
@@ -43,5 +45,9 @@ int scan_engine_snapshot(ScanResult_t* out, int max);
 
 // Starts wifi_scan_task (3 KB stack): alternating 2.4/5 GHz active scan loop.
 void scan_engine_start_task(void);
+
+// Retrieve RSSI history for an AP by BSSID. Writes up to max_samples into out_rssi.
+// Samples are in chronological order (oldest first). Returns sample count (0 if AP not found).
+int scan_engine_get_history(const uint8_t bssid[6], int8_t* out_rssi, int max_samples);
 
 const char* scan_engine_auth_str(wifi_auth_mode_t mode);
