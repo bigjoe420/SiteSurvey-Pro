@@ -81,7 +81,9 @@ Hardware verification and board support package (BSP) establishment completed.
 - [x] **Alert engine with NVS-backed target SSID list** — verified 2026-09-04 (commit `87cdd2d`)
 - [x] **Navigation debounce + PSRAM LVGL pool hardening** — verified 2026-09-04 (commit `87cdd2d`)
 - [ ] Dual-band concurrent scan (2.4 + 5 GHz) — deferred
-- [ ] Signal history graphing (RSSI over time) in LVGL — deferred
+- [x] **On-device RSSI graphing (tap AP row for detail chart)** — verified build 2026-09-04 (commit `021c2d9`)
+- [ ] Dual-band concurrent scan (2.4 + 5 GHz) — deferred
+- [ ] GPS tagging of scan logs — deferred
 - [ ] GPS tagging of scan logs — deferred
 
 ### Phase 3: Polish & Hardening — ⏸️ DEFERRED
@@ -134,7 +136,7 @@ Hardware verification and board support package (BSP) establishment completed.
 | 2.5 | SD card log export (CSV) | ✅ Done | WiGLE-compatible; session-based naming |
 | 2.6 | SD card log export (KML) | ⏸️ Deferred | Google Earth mapping |
 | 2.7 | Serial telemetry stream | ✅ Done | Debug fallback via `idf.py monitor` |
-| 2.8 | On-device graphing (LVGL charts) | ⏸️ Deferred | RSSI history plots |
+| 2.8 | On-device graphing (LVGL charts) | ✅ Done | RSSI history per AP; tap row in SCR_WIFI for detail chart 2026-09-04 |
 
 ### 4.4 System & Infrastructure
 
