@@ -1,4 +1,5 @@
 #include "alert_engine.h"
+#include "led_rgb.h"
 
 #include <cstdio>
 #include <cstring>
@@ -221,6 +222,7 @@ void alert_check(const ScanResult_t* ap, const GpsState* gps)
     if (matched) {
         log_alert(&e);
         xQueueSend(s_queue, &e, 0);  // non-blocking; drop if queue full
+        led_rgb_alert();              // flash LED red
         ESP_LOGI(TAG, "ALERT: %s | %s | ch%u | %d dBm | type=%u",
                  e.timestamp, e.target, e.channel, e.rssi, (unsigned)e.match_type);
     }

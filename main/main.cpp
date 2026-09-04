@@ -27,6 +27,7 @@
 #include "sd_card.h"
 #include "session_logger.h"
 #include "alert_engine.h"
+#include "led_rgb.h"
 
 static const char* TAG = "SiteSurvey";
 
@@ -73,6 +74,7 @@ static void late_init_task(void*)
     ESP_ERROR_CHECK(sensors_init());
     ESP_ERROR_CHECK(ble_scan_init());
     ESP_ERROR_CHECK(alert_engine_init());
+    ESP_ERROR_CHECK(led_rgb_init());
 
     // Build queue set and add ALL queues BEFORE any task can post.
     // xQueueAddToSet() fails (pdFAIL) if the queue already holds data.
