@@ -41,7 +41,7 @@ Hardware verification and board support package (BSP) establishment completed.
 | Sensors | BME680 (I2C, CN1) | ✅ | SCL=GPIO8, SDA=GPIO9 |
 | Positioning | GPS Module (UART P5) | ✅ | RX=GPIO4, TX=GPIO5, 9600 baud |
 | Storage | Micro SD (SPI shared) | ✅ | CS=GPIO10 |
-| LED | WS2812 RGB | ✅ | GPIO27, GRB order (wiring pending) |
+| LED | WS2812 RGB | ✅ | GPIO27, GRB order, RMT driver verified on-device 2026-09-04 |
 
 ---
 
@@ -65,7 +65,7 @@ Hardware verification and board support package (BSP) establishment completed.
   - [x] Clean-boot display sequence
   - [x] Live env readout on home screen
 
-### Phase 2: Feature Expansion — 🟡 ACTIVE
+### Phase 2: Feature Expansion — ✅ CLOSED (2026-09-04)
 - [x] Tabbed home navigation (WI-FI / ENV tabview, dark + green accent) — verified 2026-08-10
 - [x] Live Wi-Fi Scan List (SCR_WIFI) — verified 2026-08-10 (commit `f53cab3`)
 - [x] Environmental Dashboard (SCR_ENV) — verified 2026-08-10 (commit `e3b3446`)
@@ -74,23 +74,18 @@ Hardware verification and board support package (BSP) establishment completed.
 - [x] Data export (CSV to SD card) — session logger CSV landed 2026-08-24
 - [x] Environmental overlay on scan screen — verified 2026-08-24
 - [x] BLE Device List (SCR_BLE) — verified 2026-08-26
-- [x] **Home screen 2×4 color block grid** — verified 2026-09-04 (commit `87cdd2d`)
-- [x] **GPS Status screen (SCR_GPS)** — verified 2026-09-04 (commit `87cdd2d`)
-- [x] **Alert Log screen (SCR_ALERTS)** — verified 2026-09-04 (commit `87cdd2d`)
-- [x] **Settings screen (SCR_SETTINGS)** — verified 2026-09-04 (commit `87cdd2d`)
-- [x] **Alert engine with NVS-backed target SSID list** — verified 2026-09-04 (commit `87cdd2d`)
-- [x] **Navigation debounce + PSRAM LVGL pool hardening** — verified 2026-09-04 (commit `87cdd2d`)
-- [ ] Dual-band concurrent scan (2.4 + 5 GHz) — deferred
-- [x] **On-device RSSI graphing (tap AP row for detail chart)** — verified build 2026-09-04 (commit `021c2d9`)
-- [x] **Dual-band concurrent scan (2.4 + 5 GHz)** — verified build 2026-09-04 (commit `03707df`)
-- [x] **GPS tagging of scan logs** — implemented 2026-08-24, hardened 2026-09-04 (last-known-position cache)
+- [x] Home screen 2×4 color block grid — verified 2026-09-04 (commit `87cdd2d`)
+- [x] GPS Status screen (SCR_GPS) — verified 2026-09-04 (commit `87cdd2d`)
+- [x] Alert Log screen (SCR_ALERTS) — verified 2026-09-04 (commit `87cdd2d`)
+- [x] Settings screen (SCR_SETTINGS) — verified 2026-09-04 (commit `87cdd2d`)
+- [x] Alert engine with NVS-backed target SSID list — verified 2026-09-04 (commit `87cdd2d`)
+- [x] Navigation debounce + PSRAM LVGL pool hardening — verified 2026-09-04 (commit `87cdd2d`)
+- [x] Dual-band concurrent scan (2.4 + 5 GHz) — verified 2026-09-04 (commit `03707df`)
+- [x] GPS tagging of scan logs — implemented 2026-08-24, hardened 2026-09-04 (last-known-position cache)
+- [x] WS2812 RGB LED driver + alert hook — verified on-device 2026-09-04 (commit `e2be03b`)
 
-### Phase 3: Polish & Hardening — ⏸️ DEFERRED
-- [ ] Dual-band concurrent scan (2.4 + 5 GHz) — deferred
-- [ ] GPS tagging of scan logs — deferred
-- [ ] GPS tagging of scan logs — deferred
-
-### Phase 3: Polish & Hardening — ⏸️ DEFERRED
+### Phase 3: Polish & Hardening — 🟡 ACTIVE
+- [ ] On-device RSSI graphing (RSSI over time per AP) — top priority
 - [ ] Power management & battery life optimization
 - [ ] UI themes (outdoor high-contrast mode)
 - [ ] Configurable scan filters (by RSSI threshold, SSID regex, channel)
@@ -127,7 +122,7 @@ Hardware verification and board support package (BSP) establishment completed.
 | 1.4 | Hidden SSID detection | ✅ Done | Probe response analysis |
 | 1.5 | Security mode classification | ✅ Done | WPA2/WPA3/Open tagging |
 | 1.6 | BLE device discovery | ✅ Done | Passive scan; 32-entry static pool |
-| 1.7 | Target-based alerting | ✅ Done | BSSID/SSID match, NVS persistence, real-time check |
+| 1.7 | Target-based alerting | ✅ Done | BSSID/SSID match, NVS persistence, real-time check + LED flash 2026-09-04 |
 
 ### 4.3 Data Management
 
@@ -140,7 +135,7 @@ Hardware verification and board support package (BSP) establishment completed.
 | 2.5 | SD card log export (CSV) | ✅ Done | WiGLE-compatible; session-based naming |
 | 2.6 | SD card log export (KML) | ⏸️ Deferred | Google Earth mapping |
 | 2.7 | Serial telemetry stream | ✅ Done | Debug fallback via `idf.py monitor` |
-| 2.8 | On-device graphing (LVGL charts) | ✅ Done | RSSI history per AP; tap row in SCR_WIFI for detail chart 2026-09-04 |
+| 2.8 | On-device graphing (LVGL charts) | ⏸️ Deferred | RSSI history per AP; Phase 3 priority |
 
 ### 4.4 System & Infrastructure
 
@@ -189,7 +184,7 @@ Hardware verification and board support package (BSP) establishment completed.
 | GPS UART | Verified | 1 Hz NMEA streaming; no fix indoors (expected without antenna). |
 | SD card on shared SPI2 | Verified | 32 GB card mounted; write/read self-test OK. |
 | PSRAM LVGL pool | Resolved 2026-09-04 | 256 KB secondary pool + TLSF max pool fix; ASSERT_NULL disabled. |
-| RGB LED wiring | Pending | GPIO27 confirmed in software; physical wiring not connected. |
+| RGB LED | Verified 2026-09-04 | RMT driver on GPIO27; red flash on alert match confirmed on-device. |
 | GPS antenna | Pending | Module seated; sky-view fix validation pending. |
 | GPIO 8/9 I2C conflict | Known | Also used for CC1101/NRF24 in Bruce firmware. Reserved for I2C only. |
 | Deepsleep wake GPIO | Known | GPIO 0 is wake source. Must be HIGH at boot. |
@@ -201,7 +196,7 @@ Hardware verification and board support package (BSP) establishment completed.
 | ID | Idea | Source | Priority | Status |
 |----|------|--------|----------|--------|
 | B-01 | Spectrum analyzer waterfall display (LVGL) | User | Medium | `[investigate]` |
-| B-02 | Alert mode: notify on target SSID or RSSI threshold | User | High | `[done]` 2026-09-04 — alert engine + NVS target list |
+| B-02 | Alert mode: notify on target SSID or RSSI threshold | User | High | `[done]` 2026-09-04 — alert engine + NVS target list + LED flash |
 | B-03 | WiFi 6 (802.11ax) feature detection (HE capabilities) | User | Low | `[backlog]` |
 | B-04 | Rogue AP detection / evil twin warning | User | Medium | `[backlog]` |
 | B-05 | Offline map overlay with GPS-tagged scan points | User | Low | `[backlog]` |
