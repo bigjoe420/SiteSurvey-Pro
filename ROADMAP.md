@@ -82,6 +82,10 @@ Hardware verification and board support package (BSP) establishment completed.
 - [x] **Navigation debounce + PSRAM LVGL pool hardening** — verified 2026-09-04 (commit `87cdd2d`)
 - [ ] Dual-band concurrent scan (2.4 + 5 GHz) — deferred
 - [x] **On-device RSSI graphing (tap AP row for detail chart)** — verified build 2026-09-04 (commit `021c2d9`)
+- [x] **Dual-band concurrent scan (2.4 + 5 GHz)** — verified build 2026-09-04 (commit `03707df`)
+- [x] **GPS tagging of scan logs** — implemented 2026-08-24, hardened 2026-09-04 (last-known-position cache)
+
+### Phase 3: Polish & Hardening — ⏸️ DEFERRED
 - [ ] Dual-band concurrent scan (2.4 + 5 GHz) — deferred
 - [ ] GPS tagging of scan logs — deferred
 - [ ] GPS tagging of scan logs — deferred
@@ -130,7 +134,7 @@ Hardware verification and board support package (BSP) establishment completed.
 | # | Feature | Status | Notes |
 |---|---------|--------|-------|
 | 2.1 | In-memory scan buffer | ✅ Done | 64-entry static pool, LRU eviction |
-| 2.2 | GPS tagging per scan | ⏸️ Deferred | NMEA GGA/RMC; pending sky-view GPS fix validation |
+| 2.2 | GPS tagging per scan | ✅ Done | CSV lat/lon per AP; last-known-position cache for brief dropouts 2026-09-04 |
 | 2.3 | BME680 env snapshot per scan | ✅ Done | Temp/humidity/pressure/VOC at scan time |
 | 2.4 | BME680 continuous telemetry | ✅ Done | 5 s interval; live readout on home + scan screens |
 | 2.5 | SD card log export (CSV) | ✅ Done | WiGLE-compatible; session-based naming |

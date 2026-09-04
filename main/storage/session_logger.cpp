@@ -33,6 +33,11 @@ static bool     s_active;
 static char     s_path[64];
 static TickType_t s_last_flush;
 
+// Last-known-good GPS position — survives brief fix dropouts during survey walks.
+static GpsState s_last_fix = {};
+
+// Format BSSID as AA:BB:CC:DD:EE:FF
+
 // Format BSSID as AA:BB:CC:DD:EE:FF
 static void fmt_mac(char* out, const uint8_t* b)
 {
@@ -154,6 +159,31 @@ void session_logger_log_ap(const ScanResult_t* ap, const GpsState* gps)
     }
 
     LogEntry* e = &s_buf[s_buf_n++];
+    fmt_ts(e->ts, sizeof(e->ts), gps);
+    fmt_mac(e->mac, ap->bssid);
+    snprintf(e->ssid, sizeof(e->ssid), "%s", ap->ssid[0] ? (const char*)ap->ssid : "<hidden>");
+    snprintf(e->auth, sizeof(e->auth), "%s", fmt_auth(ap->authmode));
+    e->channel = ap->channel;
+    e->rssi = ap->rssi;
+
+    // Use current fix if valid; otherwise fall back to last-known-good position.
+    const GpsState* fix = nullptr;
+    if (gps && gps->fix_valid) {
+        s_last_fix = *gps;           // cache the good fix
+        fix = gps;
+    } else if (s_last_fix.fix_valid) {
+        fix = &s_last_fix;           // brief dropout — use cached position
+    }
+    if (fix) {
+        e->lat  = fix->lat_e7 / 1e7f;
+        e->lon  = fix->lon_e7 / 1e7f;
+        e->sats = fix->sats;
+        e->fix_q = (fix == gps) ? fix->fix_quality : 0; // 0 = cached / no current fix
+    } else {
+        e->lat = e->lon = 0.0f;
+        e->sats = 0;
+        e->fix_q = 0;
+    }
     fmt_ts(e->ts, sizeof(e->ts), gps);
     fmt_mac(e->mac, ap->bssid);
     snprintf(e->ssid, sizeof(e->ssid), "%s", ap->ssid[0] ? (const char*)ap->ssid : "<hidden>");
