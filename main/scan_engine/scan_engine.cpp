@@ -20,9 +20,16 @@ static constexpr UBaseType_t SCAN_TASK_STACK = 3072;
 static constexpr UBaseType_t SCAN_TASK_PRIO = 4;
 
 typedef struct {
+    int8_t samples[RSSI_HISTORY_LEN];
+    uint8_t head;
+    uint8_t count;
+} RssiHistory_t;
+
+typedef struct {
     ScanResult_t ap;
     TickType_t last_seen;
     bool used;
+    RssiHistory_t history;
 } PoolEntry;
 
 static PoolEntry s_pool[POOL_SIZE];
@@ -38,6 +45,13 @@ static ssp_rssi_tier_t classify(int8_t rssi)
     if (rssi >= SSP_RSSI_MODERATE_DBM) return SSP_RSSI_MODERATE;
     if (rssi >= SSP_RSSI_WEAK_DBM)     return SSP_RSSI_WEAK;
     return SSP_RSSI_MARGINAL;
+}
+
+static void history_append(RssiHistory_t* h, int8_t rssi)
+{
+    h->samples[h->head] = rssi;
+    h->head = (h->head + 1) % RSSI_HISTORY_LEN;
+    if (h->count < RSSI_HISTORY_LEN) h->count++;
 }
 
 const char* scan_engine_auth_str(wifi_auth_mode_t mode)
@@ -76,6 +90,7 @@ static const ScanResult_t* pool_upsert(const wifi_ap_record_t* rec, TickType_t n
             e.ap.authmode = rec->authmode;
             e.ap.severity = classify(rec->rssi);
             e.last_seen = now;
+            history_append(&e.history, rec->rssi);
             taskEXIT_CRITICAL(&s_pool_mux);
             return &e.ap;
         }
@@ -96,6 +111,7 @@ static const ScanResult_t* pool_upsert(const wifi_ap_record_t* rec, TickType_t n
     slot->ap.severity = classify(rec->rssi);
     slot->last_seen = now;
     slot->used = true;
+    history_append(&slot->history, rec->rssi);
     taskEXIT_CRITICAL(&s_pool_mux);
     return &slot->ap;
 }
@@ -200,4 +216,23 @@ int scan_engine_snapshot(ScanResult_t* out, int max)
 void scan_engine_start_task(void)
 {
     xTaskCreate(wifi_scan_task, "wifi_scan_task", SCAN_TASK_STACK, nullptr, SCAN_TASK_PRIO, nullptr);
+}
+
+int scan_engine_get_history(const uint8_t bssid[6], int8_t* out_rssi, int max_samples)
+{
+    taskENTER_CRITICAL(&s_pool_mux);
+    for (const PoolEntry& e : s_pool) {
+        if (e.used && memcmp(e.ap.bssid, bssid, 6) == 0) {
+            int n = (e.history.count < max_samples) ? e.history.count : max_samples;
+            int start = (e.history.head + RSSI_HISTORY_LEN - e.history.count) % RSSI_HISTORY_LEN;
+            for (int i = 0; i < n; i++) {
+                int idx = (start + i) % RSSI_HISTORY_LEN;
+                out_rssi[i] = e.history.samples[idx];
+            }
+            taskEXIT_CRITICAL(&s_pool_mux);
+            return n;
+        }
+    }
+    taskEXIT_CRITICAL(&s_pool_mux);
+    return 0;
 }
