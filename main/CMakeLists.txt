@@ -23,8 +23,9 @@ idf_component_register(
          "storage/sd_card.cpp"
          "storage/session_logger.cpp"
          "alerts/alert_engine.cpp"
-    INCLUDE_DIRS "include" "display" "touch" "ui" "scan_engine" "ble" "sensors" "storage" "alerts"
-    REQUIRES esp_driver_gpio esp_driver_spi esp_driver_uart esp_driver_i2c esp_driver_sdspi esp_lcd esp_timer esp_event esp_netif esp_wifi nvs_flash fatfs sdmmc bt lvgl__lvgl
+         "led/led_rgb.cpp"
+    INCLUDE_DIRS "include" "display" "touch" "ui" "scan_engine" "ble" "sensors" "storage" "alerts" "led"
+    REQUIRES esp_driver_gpio esp_driver_spi esp_driver_uart esp_driver_i2c esp_driver_sdspi esp_driver_rmt esp_lcd esp_timer esp_event esp_netif esp_wifi nvs_flash fatfs sdmmc bt lvgl__lvgl
 )
 
 # Panic instead of infinite loop on LVGL assert (fixes WDT hang)
