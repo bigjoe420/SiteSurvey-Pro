@@ -19,12 +19,14 @@
 #include "ui_env.h"
 #include "ui_wifi.h"
 #include "ui_ble.h"
+#include "ui_gps.h"
 #include "ui_splash.h"
 #include "scan_engine.h"
 #include "scan_ble.h"
 #include "sensors.h"
 #include "sd_card.h"
 #include "session_logger.h"
+#include "alert_engine.h"
 
 static const char* TAG = "SiteSurvey";
 
@@ -70,6 +72,7 @@ static void late_init_task(void*)
     ESP_ERROR_CHECK(scan_engine_init());
     ESP_ERROR_CHECK(sensors_init());
     ESP_ERROR_CHECK(ble_scan_init());
+    ESP_ERROR_CHECK(alert_engine_init());
 
     // Build queue set and add ALL queues BEFORE any task can post.
     // xQueueAddToSet() fails (pdFAIL) if the queue already holds data.
@@ -111,6 +114,7 @@ static void late_init_task(void*)
                      SSP_RSSI_TIER_CHAR[ap.severity],
                      scan_engine_auth_str(ap.authmode));
             session_logger_log_ap(&ap, &latest_gps);
+            alert_check(&ap, &latest_gps);
             if (!scan_ready) {
                 scan_ready = true;
                 ui_splash_notify_scan_ready();
@@ -120,6 +124,7 @@ static void late_init_task(void*)
             xQueueReceive(member, &snap, 0);
             ui_env_post_env(&snap, sensors_bme680_present());
             ui_wifi_post_env(&snap, sensors_bme680_present());
+            ui_gps_post_gps(&snap.gps);
 
             // Cache GPS state for the next scan log entry.
             latest_gps = snap.gps;

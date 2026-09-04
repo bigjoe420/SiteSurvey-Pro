@@ -32,6 +32,7 @@ static lv_obj_t* s_list;
 static bool      s_ble_visible;
 static bool      s_rows_built;
 static lv_timer_t* s_timer;
+static lv_obj_t* s_status_lbl;
 
 static const lv_color_t TIER_COLORS[] = {
     lv_color_hex(0x4CAF50), lv_color_hex(0xFFEB3B),
@@ -104,12 +105,29 @@ static void fmt_mfg_prefix(char* buf, size_t len, const BleScanResult_t* dev)
     }
 }
 
+static void update_status(int n)
+{
+    if (!s_status_lbl) return;
+    if (n == 0) {
+        lv_label_set_text(s_status_lbl, "Scanning...");
+        lv_obj_set_style_text_color(s_status_lbl, lv_color_hex(0x757575), 0);
+    } else {
+        char buf[32];
+        snprintf(buf, sizeof(buf), "%d device%s found", n, n == 1 ? "" : "s");
+        lv_label_set_text(s_status_lbl, buf);
+        lv_obj_set_style_text_color(s_status_lbl, lv_color_hex(0xB0B0B0), 0);
+    }
+}
+
 static void do_refresh(void)
 {
     if (!s_ble_visible) return;
 
     static BleScanResult_t devs[MAX_ROWS];
     int n = ble_scan_snapshot(devs, MAX_ROWS);
+
+    ESP_LOGI("ui_ble", "do_refresh: snapshot=%d rows_built=%d", n, s_rows_built);
+    update_status(n);
 
     int built_this_call = 0;
     for (int i = 0; i < MAX_ROWS; i++) {
@@ -248,6 +266,13 @@ lv_obj_t* ui_ble_create(void)
     lv_label_set_text(back_lbl, "<");
     lv_obj_center(back_lbl);
 
+    // Status label below title — shows device count or "Scanning..."
+    s_status_lbl = lv_label_create(scr);
+    lv_label_set_text(s_status_lbl, "Scanning...");
+    lv_obj_set_style_text_color(s_status_lbl, lv_color_hex(0x757575), 0);
+    lv_obj_set_style_text_font(s_status_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_align(s_status_lbl, LV_ALIGN_TOP_MID, 0, 36);
+
     s_timer = lv_timer_create(refresh, 3000, nullptr);
     return scr;
 }
@@ -259,8 +284,10 @@ void ui_ble_set_visible(bool visible)
         if (visible) lv_timer_resume(s_timer);
         else         lv_timer_pause(s_timer);
     }
-    if (visible && !s_rows_built) {
-        // Fast-build mode: 50 ms batches until all rows exist.
+    if (visible) {
+        // Always force fast-build on entry — rows may be stale from a
+        // previous visit, or the snapshot may have changed.
+        s_rows_built = false;
         lv_timer_set_period(s_timer, 50);
         lv_timer_reset(s_timer);
         do_refresh();
