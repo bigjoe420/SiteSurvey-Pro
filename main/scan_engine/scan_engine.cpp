@@ -19,6 +19,19 @@ static constexpr uint32_t SCAN_INTERVAL_MS = 5000;
 static constexpr UBaseType_t SCAN_TASK_STACK = 3072;
 static constexpr UBaseType_t SCAN_TASK_PRIO = 4;
 
+// US 5 GHz channels (bit0 = 0 for bitmap mode, bits 1-25 = channels 36-165)
+static constexpr uint32_t US_5G_CHANNEL_MASK =
+    WIFI_CHANNEL_36 | WIFI_CHANNEL_40 | WIFI_CHANNEL_44 | WIFI_CHANNEL_48 |
+    WIFI_CHANNEL_52 | WIFI_CHANNEL_56 | WIFI_CHANNEL_60 | WIFI_CHANNEL_64 |
+    WIFI_CHANNEL_100 | WIFI_CHANNEL_104 | WIFI_CHANNEL_108 | WIFI_CHANNEL_112 |
+    WIFI_CHANNEL_116 | WIFI_CHANNEL_120 | WIFI_CHANNEL_124 | WIFI_CHANNEL_128 |
+    WIFI_CHANNEL_132 | WIFI_CHANNEL_136 | WIFI_CHANNEL_140 | WIFI_CHANNEL_144 |
+    WIFI_CHANNEL_149 | WIFI_CHANNEL_153 | WIFI_CHANNEL_157 | WIFI_CHANNEL_161 |
+    WIFI_CHANNEL_165;
+
+// 2.4 GHz channels 1-14 (bit0 = 0 for bitmap mode)
+static constexpr uint16_t ALL_2G_CHANNEL_MASK = 0x7FFE;
+
 typedef struct {
     int8_t samples[RSSI_HISTORY_LEN];
     uint8_t head;
@@ -116,22 +129,20 @@ static const ScanResult_t* pool_upsert(const wifi_ap_record_t* rec, TickType_t n
     return &slot->ap;
 }
 
-static uint16_t scan_band(wifi_band_t band, TickType_t now)
+// Single-shot dual-band scan using channel bitmap. Scans all 2.4 GHz and
+// US 5 GHz channels concurrently in one blocking call.
+static uint16_t scan_all(TickType_t now)
 {
-    esp_err_t err = esp_wifi_set_band(band);
-    if (err != ESP_OK) {
-        ESP_LOGW(TAG, "set_band %d failed: %s", band, esp_err_to_name(err));
-        return 0;
-    }
-
     wifi_scan_config_t cfg = {};
-    cfg.channel = 0;             // all channels of the selected band
+    cfg.channel = 0;                          // bitmap mode
     cfg.show_hidden = true;
     cfg.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+    cfg.channel_bitmap.ghz_2_channels = ALL_2G_CHANNEL_MASK;
+    cfg.channel_bitmap.ghz_5_channels = US_5G_CHANNEL_MASK;
 
-    err = esp_wifi_scan_start(&cfg, true);
+    esp_err_t err = esp_wifi_scan_start(&cfg, true);
     if (err != ESP_OK) {
-        ESP_LOGW(TAG, "band %d scan failed: %s", band, esp_err_to_name(err));
+        ESP_LOGW(TAG, "dual-band scan failed: %s", esp_err_to_name(err));
         return 0;
     }
 
@@ -148,14 +159,20 @@ static void wifi_scan_task(void*)
 {
     while (true) {
         TickType_t now = xTaskGetTickCount();
-        uint16_t n2 = scan_band(WIFI_BAND_2G, now);
-        uint16_t n5 = scan_band(WIFI_BAND_5G, now);
+        uint16_t n = scan_all(now);
+
+        // Count 2.4G vs 5G results for the log
+        uint16_t n2 = 0, n5 = 0;
+        for (uint16_t i = 0; i < n && i < SCAN_BUF_MAX; i++) {
+            if (s_scan_buf[i].primary <= 14) n2++;
+            else n5++;
+        }
 
         size_t used = 0;
         for (const PoolEntry& e : s_pool) if (e.used) used++;
 
-        ESP_LOGI(TAG, "cycle: 2.4G=%u 5G=%u pool=%u/%u evict=%lu drops=%lu hwm=%u heap=%lu",
-                 n2, n5, (unsigned)used, (unsigned)POOL_SIZE,
+        ESP_LOGI(TAG, "cycle: total=%u (2.4G=%u 5G=%u) pool=%u/%u evict=%lu drops=%lu hwm=%u heap=%lu",
+                 n, n2, n5, (unsigned)used, (unsigned)POOL_SIZE,
                  (unsigned long)s_evictions, (unsigned long)s_drops,
                  (unsigned)uxTaskGetStackHighWaterMark(nullptr),
                  (unsigned long)esp_get_free_heap_size());
