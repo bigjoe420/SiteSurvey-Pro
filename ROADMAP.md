@@ -119,7 +119,7 @@ Hardware verification and board support package (BSP) establishment completed.
 |---|---------|--------|-------|
 | 1.1 | WiFi 2.4 GHz active scan | ✅ Done | Blocking all-channel scan, ch 1–11 |
 | 1.2 | WiFi 5 GHz active scan | ✅ Done | `esp_wifi_set_country_code("US", true)`; ch 36+ confirmed |
-| 1.3 | Dual-band concurrent scan | ⏸️ Deferred | ESP32-C5 native dual-band support |
+| 1.3 | Dual-band concurrent scan | ✅ Done | `channel_bitmap` single-call scan; 2.4G ch 1-14 + 5G ch 36-165 concurrently 2026-09-04 |
 | 1.4 | Hidden SSID detection | ✅ Done | Probe response analysis |
 | 1.5 | Security mode classification | ✅ Done | WPA2/WPA3/Open tagging |
 | 1.6 | BLE device discovery | ✅ Done | Passive scan; 32-entry static pool |
