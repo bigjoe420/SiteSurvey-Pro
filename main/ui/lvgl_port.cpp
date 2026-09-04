@@ -91,6 +91,24 @@ esp_err_t lvgl_port_init(void)
 
     lv_init();
 
+    /* Add a PSRAM-backed secondary pool to LVGL. The 64 KB internal pool can
+     * be exhausted by heavy screens (Settings keyboard), causing lv_realloc to
+     * return NULL and LV_ASSERT_MALLOC to hang in while(1). The PSRAM pool
+     * absorbs overflow so the UI never OOMs. */
+    constexpr size_t LV_PSRAM_POOL_SIZE = 256 * 1024;
+    void * lv_psram_pool = heap_caps_malloc(LV_PSRAM_POOL_SIZE, MALLOC_CAP_SPIRAM);
+    if (lv_psram_pool) {
+        lv_mem_pool_t pool = lv_mem_add_pool(lv_psram_pool, LV_PSRAM_POOL_SIZE);
+        if (pool) {
+            ESP_LOGI(TAG, "LVGL PSRAM pool added: %u KB", (unsigned)(LV_PSRAM_POOL_SIZE / 1024));
+        } else {
+            ESP_LOGW(TAG, "lv_mem_add_pool failed, freeing PSRAM block");
+            heap_caps_free(lv_psram_pool);
+        }
+    } else {
+        ESP_LOGW(TAG, "PSRAM pool alloc failed, LVGL limited to internal pool");
+    }
+
     s_disp = lv_display_create(SSP_TFT_WIDTH, SSP_TFT_HEIGHT);
     // ST7789 takes RGB565 MSB-first over SPI; render pre-swapped so flush
     // can hand the buffer to esp_lcd untouched

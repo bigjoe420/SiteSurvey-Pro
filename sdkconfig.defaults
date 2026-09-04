@@ -87,3 +87,23 @@ CONFIG_LV_FONT_MONTSERRAT_20=y
 # -----------------------------------------------------------------------------
 CONFIG_COMPILER_OPTIMIZATION_DEFAULT=y
 CONFIG_COMPILER_OPTIMIZATION_ASSERTIONS_ENABLE=y
+
+# -----------------------------------------------------------------------------
+# Console — Hardening
+# -----------------------------------------------------------------------------
+# Disable secondary USB-SERIAL-JTAG console. When enabled, printk / ESP_LOG
+# to this channel BLOCK the calling task if no monitor is attached to drain
+# COM7. This caused ui_task freezes during per-event diag logging (2026-08-31).
+# Primary UART console (USB-OTG-Serial, CDC) remains active for flash/monitor.
+CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# LVGL memory pool — reverted to 64 KB. The 96 KB bump caused NimBLE to fail with
+# BLE_ERR_MEM_CAPACITY (0x207) because it stole too much internal RAM. NULL guards
+# in the UI code now handle any lv_*_create failures gracefully instead of hanging.
+# when multiple screens are cached (Settings keyboard is heavy).
+CONFIG_LV_MEM_SIZE_KILOBYTES=64
+CONFIG_LV_MEM_POOL_EXPAND_SIZE_KILOBYTES=256
+
+# Disable LVGL NULL-pointer asserts. When OOM strikes, lv_obj_create returns NULL
+# instead of hanging in while(1). Existing NULL guards in the UI code handle it.
+# CONFIG_LV_USE_ASSERT_NULL is not set
