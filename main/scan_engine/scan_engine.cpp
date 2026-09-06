@@ -14,7 +14,7 @@ static const char* TAG = "scan_engine";
 #define SSP_WIFI_COUNTRY "US"
 
 static constexpr size_t POOL_SIZE = 64;
-static constexpr uint16_t SCAN_BUF_MAX = 48;
+static constexpr uint16_t SCAN_BUF_MAX = 64;
 static constexpr uint32_t SCAN_INTERVAL_MS = 5000;
 static constexpr UBaseType_t SCAN_TASK_STACK = 3072;
 static constexpr UBaseType_t SCAN_TASK_PRIO = 4;
@@ -137,6 +137,9 @@ static uint16_t scan_all(TickType_t now)
     cfg.channel = 0;                          // bitmap mode
     cfg.show_hidden = true;
     cfg.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+    cfg.scan_time.active.min = 100;           // ms per channel
+    cfg.scan_time.active.max = 300;
+    cfg.scan_time.passive = 300;
     cfg.channel_bitmap.ghz_2_channels = ALL_2G_CHANNEL_MASK;
     cfg.channel_bitmap.ghz_5_channels = US_5G_CHANNEL_MASK;
 
@@ -190,7 +193,11 @@ esp_err_t scan_engine_init(void)
     wifi_init_config_t cfg = WIFI_INIT_CONFIG_DEFAULT();
     ESP_RETURN_ON_ERROR(esp_wifi_init(&cfg), TAG, "wifi init failed");
     ESP_RETURN_ON_ERROR(esp_wifi_set_mode(WIFI_MODE_STA), TAG, "set mode failed");
-    // Regulatory domain gates which 5 GHz channels may be scanned
+    // Lock country code to US permanently — do NOT allow nearby AP beacons to
+    // override our regulatory domain.  ieee80211d_enabled=true caused 5 GHz
+    // scanning to disappear when a neighbouring AP advertised a different
+    // country code (e.g. "01" world-safe or "CN"/"JP" with restrictive 5G rules).
+    ESP_RETURN_ON_ERROR(esp_wifi_set_country_code(SSP_WIFI_COUNTRY, false), TAG, "set country failed");
     ESP_RETURN_ON_ERROR(esp_wifi_set_country_code(SSP_WIFI_COUNTRY, true), TAG, "set country failed");
     ESP_RETURN_ON_ERROR(esp_wifi_start(), TAG, "wifi start failed");
     // Only valid after esp_wifi_start() — returns ESP_ERR_WIFI_NOT_STARTED otherwise
@@ -227,6 +234,24 @@ int scan_engine_snapshot(ScanResult_t* out, int max)
         }
         out[j + 1] = key;
     }
+
+    // Rogue AP detection: same SSID, different BSSID = potential evil twin
+    for (int i = 0; i < n; i++) {
+        out[i].rogue = false;
+    }
+    for (int i = 0; i < n; i++) {
+        if (out[i].ssid[0] == 0) continue;  // skip hidden
+        for (int j = i + 1; j < n; j++) {
+            if (out[j].ssid[0] == 0) continue;
+            if (strcmp((const char*)out[i].ssid, (const char*)out[j].ssid) == 0) {
+                if (memcmp(out[i].bssid, out[j].bssid, 6) != 0) {
+                    out[i].rogue = true;
+                    out[j].rogue = true;
+                }
+            }
+        }
+    }
+
     return n;
 }
 

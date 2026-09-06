@@ -7,17 +7,19 @@
 #include "ui_home.h"
 #include "ui_wifi_detail.h"
 
-#define MAX_ROWS 8
+#define MAX_ROWS 48
 
 // Build at most this many rows per do_refresh() call to avoid stalling
 // lv_timer_handler() with a burst of object creation.
-static constexpr int BUILD_BATCH = 2;
+static constexpr int BUILD_BATCH = 8;
 
 typedef struct {
     lv_obj_t* row;
     lv_obj_t* bar;
     lv_obj_t* ssid;
     lv_obj_t* info;
+    lv_obj_t* detail_btn;  // dedicated " > " button for detail view
+    lv_obj_t* rogue_lbl;   // warning indicator for rogue/evil twin APs
 } Row;
 
 typedef struct {
@@ -29,6 +31,7 @@ typedef struct {
     uint8_t channel;
     wifi_auth_mode_t authmode;
     ssp_rssi_tier_t severity;
+    bool rogue;
 } RowState;
 
 static Row        s_rows[MAX_ROWS];
@@ -67,9 +70,9 @@ static const lv_color_t TIER_COLORS[] = {
 #define COL_BAR_W   48
 #define COL_BAR_X   4
 #define COL_SSID_X  56
-#define COL_SSID_W  120
-#define COL_INFO_X  180
-#define COL_INFO_W  130
+#define COL_SSID_W  100
+#define COL_INFO_X  160
+#define COL_INFO_W  120  // wider to fit longer auth modes like WPA2/WPA3
 
 // Forward declarations
 static void row_click_cb(lv_event_t* e);
@@ -79,8 +82,12 @@ static void build_row(lv_obj_t* parent, Row* r, int idx)
 {
     r->row = lv_obj_create(parent);
     lv_obj_remove_flag(r->row, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_remove_flag(r->row, LV_OBJ_FLAG_CLICKABLE);
-    // Allow drag gestures on the row to chain up to the scrollable list.
+    // Row is NOT clickable — only the detail_btn captures taps.
+    // This prevents the row body from competing with list scroll gestures.
+    lv_obj_add_flag(r->row, LV_OBJ_FLAG_SCROLL_CHAIN);
+    // No click callback is attached to the row itself — only the detail_btn
+    // opens the graph, so accidental detail opens are still prevented.
+    lv_obj_add_flag(r->row, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_add_flag(r->row, LV_OBJ_FLAG_SCROLL_CHAIN);
     lv_obj_set_pos(r->row, 0, idx * ROW_STRIDE);
     lv_obj_set_size(r->row, ROW_W, ROW_H);
@@ -108,12 +115,30 @@ static void build_row(lv_obj_t* parent, Row* r, int idx)
     lv_obj_set_size(r->info, COL_INFO_W, LV_SIZE_CONTENT);
     lv_label_set_long_mode(r->info, LV_LABEL_LONG_CLIP);
     lv_obj_set_style_text_color(r->info, lv_color_hex(0xE8E8E8), 0);
-    lv_obj_set_style_text_align(r->info, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_style_text_align(r->info, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_pos(r->info, COL_INFO_X, (ROW_H - lv_font_get_line_height(&lv_font_montserrat_14)) / 2);
 
-    // Make row clickable for detail view; LV_EVENT_SHORT_CLICKED avoids scroll conflict
-    lv_obj_add_flag(r->row, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_event_cb(r->row, row_click_cb, LV_EVENT_SHORT_CLICKED, nullptr);
+    // Dedicated detail button on the right — prevents accidental opens when scrolling
+    r->detail_btn = lv_btn_create(r->row);
+    lv_obj_set_size(r->detail_btn, 26, 20);
+    lv_obj_set_pos(r->detail_btn, ROW_W - 30, 5);
+    lv_obj_set_style_bg_color(r->detail_btn, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_radius(r->detail_btn, 2, 0);
+    lv_obj_add_event_cb(r->detail_btn, row_click_cb, LV_EVENT_CLICKED, (void*)(intptr_t)idx);
+
+    lv_obj_t* detail_lbl = lv_label_create(r->detail_btn);
+    lv_label_set_text(detail_lbl, ">");
+    lv_obj_set_style_text_font(detail_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(detail_lbl, lv_color_hex(0xB0B0B0), 0);
+    lv_obj_center(detail_lbl);
+
+    // Rogue AP warning label - positioned left of detail button
+    r->rogue_lbl = lv_label_create(r->row);
+    lv_label_set_text(r->rogue_lbl, "!");
+    lv_obj_set_style_text_font(r->rogue_lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(r->rogue_lbl, lv_color_hex(0xF44336), 0);
+    lv_obj_set_pos(r->rogue_lbl, ROW_W - 48, 5);
+    lv_obj_add_flag(r->rogue_lbl, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void update_env_overlay(void)
@@ -226,6 +251,14 @@ static void do_refresh(void)
         st->channel = ap->channel;
         st->authmode = ap->authmode;
         st->severity = ap->severity;
+        st->rogue = ap->rogue;
+        if (r->rogue_lbl) {
+            if (ap->rogue) {
+                lv_obj_remove_flag(r->rogue_lbl, LV_OBJ_FLAG_HIDDEN);
+            } else {
+                lv_obj_add_flag(r->rogue_lbl, LV_OBJ_FLAG_HIDDEN);
+            }
+        }
     }
 
     // Only force layout recalc if we actually built rows this call.
@@ -242,6 +275,17 @@ static void do_refresh(void)
         if (all_built) {
             s_rows_built = true;
             lv_timer_set_period(s_timer, 5000);  // restore normal 5 s refresh
+        }
+    } else {
+        // New APs appeared after initial build — need rows we haven't created yet.
+        bool need_new = false;
+        for (int i = 0; i < n && i < MAX_ROWS; i++) {
+            if (!s_rows[i].row) { need_new = true; break; }
+        }
+        if (need_new) {
+            s_rows_built = false;
+            lv_timer_set_period(s_timer, 50);
+            lv_timer_reset(s_timer);
         }
     }
 
@@ -270,28 +314,25 @@ static void detail_back_cb(lv_event_t*)
 
 static void row_click_cb(lv_event_t* e)
 {
-    lv_obj_t* target = (lv_obj_t*)lv_event_get_current_target(e);
-    for (int i = 0; i < MAX_ROWS; i++) {
-        if (s_rows[i].row == target && s_state[i].shown) {
-            WifiApInfo_t info = {};
-            strncpy(info.ssid, s_state[i].ssid, sizeof(info.ssid) - 1);
-            memcpy(info.bssid, s_state[i].bssid, 6);
-            info.channel = s_state[i].channel;
-            info.rssi = s_state[i].rssi;
-            info.authmode = s_state[i].authmode;
-            info.severity = s_state[i].severity;
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx >= MAX_ROWS || !s_state[idx].shown) return;
 
-            if (!s_detail_scr) {
-                s_detail_scr = ui_wifi_detail_create(&info, detail_back_cb);
-            } else {
-                ui_wifi_detail_update(&info);
-            }
-            lv_screen_load(s_detail_scr);
-            ui_wifi_set_visible(false);
-            ui_wifi_detail_set_visible(true);
-            break;
-        }
+    WifiApInfo_t info = {};
+    strncpy(info.ssid, s_state[idx].ssid, sizeof(info.ssid) - 1);
+    memcpy(info.bssid, s_state[idx].bssid, 6);
+    info.channel = s_state[idx].channel;
+    info.rssi = s_state[idx].rssi;
+    info.authmode = s_state[idx].authmode;
+    info.severity = s_state[idx].severity;
+
+    if (!s_detail_scr) {
+        s_detail_scr = ui_wifi_detail_create(&info, detail_back_cb);
+    } else {
+        ui_wifi_detail_update(&info);
     }
+    lv_screen_load(s_detail_scr);
+    ui_wifi_set_visible(false);
+    ui_wifi_detail_set_visible(true);
 }
 
 lv_obj_t* ui_wifi_create(void)
@@ -306,12 +347,13 @@ lv_obj_t* ui_wifi_create(void)
     lv_obj_set_pos(s_list, 0, 64);
     lv_obj_set_style_bg_opa(s_list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(s_list, 0, 0);
-    lv_obj_set_style_pad_all(s_list, 2, 0);
-    lv_obj_set_style_pad_top(s_list, 2, 0);
+    lv_obj_set_style_pad_all(s_list, 0, 0);
+    lv_obj_set_style_pad_top(s_list, 0, 0);
     lv_obj_set_style_pad_row(s_list, 0, 0);
     lv_obj_set_scrollbar_mode(s_list, LV_SCROLLBAR_MODE_OFF);
     lv_obj_add_flag(s_list, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(s_list, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+    lv_obj_add_flag(s_list, LV_OBJ_FLAG_SCROLL_ELASTIC);
     lv_obj_set_scroll_dir(s_list, LV_DIR_VER);
     lv_obj_set_scroll_snap_y(s_list, LV_SCROLL_SNAP_NONE);
 
