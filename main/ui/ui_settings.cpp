@@ -3,9 +3,11 @@
 #include <cstdio>
 #include <cstring>
 #include <cstdint>
+#include <cstdlib>
 #include "esp_log.h"
 #include "ui_home.h"
 #include "alert_engine.h"
+#include "scan_engine.h"
 
 static bool s_visible;
 static lv_obj_t* s_scr;
@@ -28,10 +30,19 @@ static lv_obj_t* s_lbl_bssid_header;
 
 // Keyboard modal
 static lv_obj_t* s_modal;
+static lv_obj_t* s_modal_title;
 static lv_obj_t* s_ta;
 static lv_obj_t* s_kb;
-static int s_edit_type;   // 0=SSID, 1=BSSID
+static int s_edit_type;   // 0=SSID, 1=BSSID, 2=RSSI
 static int s_edit_index;  // -1=new, 0..3=existing
+
+// Scanned-AP picker modal
+static lv_obj_t* s_pick_modal;
+static lv_obj_t* s_pick_list;
+static lv_obj_t* s_pick_empty;
+static lv_obj_t* s_pick_title;
+static char s_pick_ssids[16][33];
+static int s_pick_count;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -120,6 +131,7 @@ static void close_modal(void)
 {
     lv_obj_add_flag(s_modal, LV_OBJ_FLAG_HIDDEN);
     lv_textarea_set_text(s_ta, "");
+    if (s_panel) lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
 }
 
 static void modal_ok_cb(lv_event_t*)
@@ -138,7 +150,7 @@ static void modal_ok_cb(lv_event_t*)
             if (s_edit_index < 0) s_cfg.ssid_count++;
         }
         refresh_ssid_list();
-    } else {  // BSSID
+    } else if (s_edit_type == 1) {  // BSSID
         int idx = (s_edit_index >= 0) ? s_edit_index : s_cfg.bssid_count;
         if (idx < ALERT_MAX_BSSID_TARGETS) {
             strncpy(s_cfg.bssid_targets[idx], text, sizeof(s_cfg.bssid_targets[0]) - 1);
@@ -146,6 +158,12 @@ static void modal_ok_cb(lv_event_t*)
             if (s_edit_index < 0) s_cfg.bssid_count++;
         }
         refresh_bssid_list();
+    } else if (s_edit_type == 2) {  // RSSI threshold
+        int val = atoi(text);
+        if (val < -100) val = -100;
+        if (val > -30) val = -30;
+        s_cfg.rssi_threshold = (int8_t)val;
+        refresh_rssi_label();
     }
 
     save_config();
@@ -164,13 +182,153 @@ static void open_modal(int type, int index)
 
     if (type == 0 && index >= 0) {
         lv_textarea_set_text(s_ta, s_cfg.ssid_targets[index]);
+        if (s_modal_title) lv_label_set_text(s_modal_title, "Enter SSID");
     } else if (type == 1 && index >= 0) {
         lv_textarea_set_text(s_ta, s_cfg.bssid_targets[index]);
+        if (s_modal_title) lv_label_set_text(s_modal_title, "Enter BSSID");
+    } else if (type == 2) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d", s_cfg.rssi_threshold);
+        lv_textarea_set_text(s_ta, buf);
+        if (s_modal_title) lv_label_set_text(s_modal_title, "Enter RSSI threshold");
     } else {
         lv_textarea_set_text(s_ta, "");
+        if (s_modal_title) lv_label_set_text(s_modal_title, "Enter target");
     }
 
+    if (s_pick_modal) lv_obj_add_flag(s_pick_modal, LV_OBJ_FLAG_HIDDEN);
+    if (s_panel) lv_obj_remove_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_remove_flag(s_modal, LV_OBJ_FLAG_HIDDEN);
+}
+
+// ---------------------------------------------------------------------------
+// Scanned-AP picker modal
+// ---------------------------------------------------------------------------
+
+static void close_pick_modal(void)
+{
+    lv_obj_add_flag(s_pick_modal, LV_OBJ_FLAG_HIDDEN);
+    if (s_panel) lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+static void pick_ap_cb(lv_event_t* e)
+{
+    const char* ssid = (const char*)lv_event_get_user_data(e);
+    if (!ssid || !ssid[0]) {
+        close_pick_modal();
+        return;
+    }
+    if (s_cfg.ssid_count < ALERT_MAX_SSID_TARGETS) {
+        int idx = s_cfg.ssid_count;
+        strncpy(s_cfg.ssid_targets[idx], ssid, sizeof(s_cfg.ssid_targets[0]) - 1);
+        s_cfg.ssid_targets[idx][sizeof(s_cfg.ssid_targets[0]) - 1] = '\0';
+        s_cfg.ssid_count++;
+        refresh_ssid_list();
+        save_config();
+    }
+    close_pick_modal();
+}
+
+static void pick_manual_cb(lv_event_t*)
+{
+    close_pick_modal();
+    open_modal(0, -1);
+}
+
+static void pick_cancel_cb(lv_event_t*)
+{
+    close_pick_modal();
+}
+
+static void open_pick_modal(void)
+{
+    if (!s_pick_modal || !s_pick_list) return;
+
+    lv_obj_clean(s_pick_list);
+    lv_obj_scroll_to_y(s_pick_list, 0, LV_ANIM_OFF);
+    s_pick_count = 0;
+
+    ScanResult_t aps[32];
+    int n = scan_engine_snapshot(aps, 32);
+
+    // Sort by RSSI descending (strongest first)
+    for (int i = 0; i < n - 1; i++) {
+        for (int j = 0; j < n - i - 1; j++) {
+            if (aps[j].rssi < aps[j + 1].rssi) {
+                ScanResult_t tmp = aps[j];
+                aps[j] = aps[j + 1];
+                aps[j + 1] = tmp;
+            }
+        }
+    }
+
+    // Build rows - limit to 5 to avoid scroll-vs-click ambiguity on small screen
+    for (int i = 0; i < n && s_pick_count < 5; i++) {
+        // Skip already-targeted SSIDs
+        bool already = false;
+        for (int j = 0; j < s_cfg.ssid_count; j++) {
+            if (strcmp((const char*)aps[i].ssid, s_cfg.ssid_targets[j]) == 0) {
+                already = true; break;
+            }
+        }
+        if (already) continue;
+
+        lv_obj_t* row = lv_obj_create(s_pick_list);
+        lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_size(row, 304, 28);
+        lv_obj_set_pos(row, 0, s_pick_count * 28);
+        lv_obj_set_style_bg_color(row, lv_color_hex(0x1A1A1A), 0);
+        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_pad_all(row, 2, 0);
+
+        lv_obj_t* lbl = lv_label_create(row);
+        char buf[64];
+        snprintf(buf, sizeof(buf), "%s  %s  %d dBm",
+                 aps[i].ssid[0] ? (const char*)aps[i].ssid : "<hidden>",
+                 aps[i].channel <= 14 ? "2.4G" : "5G",
+                 aps[i].rssi);
+        lv_label_set_text(lbl, buf);
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(0xE8E8E8), 0);
+        lv_obj_set_pos(lbl, 4, 4);
+
+        lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(row, LV_OBJ_FLAG_PRESS_LOCK);
+        strncpy(s_pick_ssids[s_pick_count], (const char*)aps[i].ssid, 32);
+        s_pick_ssids[s_pick_count][32] = '\0';
+        lv_obj_add_event_cb(row, pick_ap_cb, LV_EVENT_CLICKED, s_pick_ssids[s_pick_count]);
+        s_pick_count++;
+    }
+
+    // Size list to fit exactly - never scroll
+    if (s_pick_list) {
+        int list_h = s_pick_count * 28;
+        if (list_h < 28) list_h = 28;  // minimum height when empty
+        lv_obj_set_height(s_pick_list, list_h);
+        lv_obj_remove_flag(s_pick_list, LV_OBJ_FLAG_SCROLLABLE);
+    }
+
+    // Update title if some APs were hidden
+    if (s_pick_title) {
+        if (n > 5) {
+            lv_label_set_text(s_pick_title, "Pick SSID (top 5 by signal)");
+        } else {
+            lv_label_set_text(s_pick_title, "Pick SSID from scan");
+        }
+    }
+
+    if (s_pick_empty) {
+        if (s_pick_count == 0) {
+            lv_obj_clear_flag(s_pick_empty, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(s_pick_empty, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    if (s_modal) lv_obj_add_flag(s_modal, LV_OBJ_FLAG_HIDDEN);
+    if (s_panel) lv_obj_remove_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(s_pick_modal, LV_OBJ_FLAG_HIDDEN);
 }
 
 // ---------------------------------------------------------------------------
@@ -196,6 +354,11 @@ static void rssi_plus_cb(lv_event_t*)
     if (s_cfg.rssi_threshold < -30) s_cfg.rssi_threshold += 5;
     refresh_rssi_label();
     save_config();
+}
+
+static void rssi_label_cb(lv_event_t*)
+{
+    open_modal(2, -1);
 }
 
 static void ssid_delete_cb(lv_event_t* e)
@@ -228,7 +391,7 @@ static void bssid_delete_cb(lv_event_t* e)
 
 static void ssid_add_cb(lv_event_t*)
 {
-    open_modal(0, -1);
+    open_pick_modal();
 }
 
 static void bssid_add_cb(lv_event_t*)
@@ -266,6 +429,7 @@ static lv_obj_t* make_target_row(lv_obj_t* parent, int y, lv_event_cb_t edit_cb,
         return nullptr;
     }
     lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(row, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_size(row, 304, 24);
     lv_obj_set_pos(row, 4, y);
     lv_obj_set_style_bg_color(row, lv_color_hex(0x1A1A1A), 0);
@@ -332,6 +496,8 @@ lv_obj_t* ui_settings_create(void)
         lv_obj_set_style_border_width(s_panel, 0, 0);
         lv_obj_set_style_pad_all(s_panel, 4, 0);
         lv_obj_set_scroll_dir(s_panel, LV_DIR_VER);
+        lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+        lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLL_ELASTIC);
     }
 
     int y = 0;
@@ -374,6 +540,9 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_style_text_font(s_lbl_rssi, &lv_font_montserrat_14, 0);
             lv_obj_set_style_text_color(s_lbl_rssi, lv_color_hex(0xE8E8E8), 0);
             lv_obj_set_pos(s_lbl_rssi, 140, y + 6);
+            lv_obj_add_flag(s_lbl_rssi, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_add_event_cb(s_lbl_rssi, rssi_label_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_set_ext_click_area(s_lbl_rssi, 10);
         }
 
         lv_obj_t* btn_minus = lv_btn_create(s_panel);
@@ -383,6 +552,7 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_style_bg_color(btn_minus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_minus, 2, 0);
             lv_obj_add_event_cb(btn_minus, rssi_minus_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_set_ext_click_area(btn_minus, 12);
             lv_obj_t* lbl_minus = lv_label_create(btn_minus);
             if (lbl_minus) {
                 lv_label_set_text(lbl_minus, "-");
@@ -397,6 +567,7 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_style_bg_color(btn_plus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_plus, 2, 0);
             lv_obj_add_event_cb(btn_plus, rssi_plus_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_set_ext_click_area(btn_plus, 12);
             lv_obj_t* lbl_plus = lv_label_create(btn_plus);
             if (lbl_plus) {
                 lv_label_set_text(lbl_plus, "+");
@@ -535,33 +706,42 @@ lv_obj_t* ui_settings_create(void)
         lv_obj_set_size(s_modal, 320, 240);
         lv_obj_set_pos(s_modal, 0, 0);
         lv_obj_set_style_bg_color(s_modal, lv_color_hex(0x000000), 0);
-        lv_obj_set_style_bg_opa(s_modal, LV_OPA_80, 0);
+        lv_obj_set_style_bg_opa(s_modal, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(s_modal, 0, 0);
+        lv_obj_set_style_pad_all(s_modal, 0, 0);
         lv_obj_add_flag(s_modal, LV_OBJ_FLAG_CLICKABLE);  // block pass-through
+        lv_obj_remove_flag(s_modal, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_flag(s_modal, LV_OBJ_FLAG_HIDDEN);
 
         // Title for modal
-        lv_obj_t* modal_title = lv_label_create(s_modal);
-        if (modal_title) {
-            lv_label_set_text(modal_title, "Enter target");
-            lv_obj_set_style_text_font(modal_title, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(modal_title, lv_color_hex(0xE8E8E8), 0);
-            lv_obj_align(modal_title, LV_ALIGN_TOP_MID, 0, 8);
+        s_modal_title = lv_label_create(s_modal);
+        if (s_modal_title) {
+            lv_label_set_text(s_modal_title, "Enter target");
+            lv_obj_set_style_text_font(s_modal_title, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_modal_title, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_align(s_modal_title, LV_ALIGN_TOP_MID, 0, 6);
         }
 
-        // Text area
+        // Text area - compact input field above keyboard
         s_ta = lv_textarea_create(s_modal);
         if (s_ta) {
-            lv_obj_set_size(s_ta, 280, 36);
-            lv_obj_set_pos(s_ta, 20, 32);
+            lv_obj_set_size(s_ta, 280, 18);
+            lv_obj_set_pos(s_ta, 20, 20);
+
             lv_textarea_set_one_line(s_ta, true);
             lv_textarea_set_max_length(s_ta, 32);
             lv_obj_set_style_text_font(s_ta, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_ta, lv_color_white(), 0);
+            lv_obj_set_style_bg_color(s_ta, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_opa(s_ta, LV_OPA_COVER, 0);
+            lv_obj_set_style_border_width(s_ta, 0, 0);
+            lv_obj_set_style_pad_all(s_ta, 4, 0);
 
             // OK button
             lv_obj_t* btn_ok = lv_btn_create(s_modal);
             if (btn_ok) {
-                lv_obj_set_size(btn_ok, 80, 28);
-                lv_obj_set_pos(btn_ok, 60, 72);
+                lv_obj_set_size(btn_ok, 80, 18);
+                lv_obj_set_pos(btn_ok, 60, 42);
                 lv_obj_set_style_bg_color(btn_ok, lv_color_hex(0x2E7D32), 0);
                 lv_obj_set_style_radius(btn_ok, 3, 0);
                 lv_obj_add_event_cb(btn_ok, modal_ok_cb, LV_EVENT_CLICKED, nullptr);
@@ -575,8 +755,8 @@ lv_obj_t* ui_settings_create(void)
             // Cancel button
             lv_obj_t* btn_cancel = lv_btn_create(s_modal);
             if (btn_cancel) {
-                lv_obj_set_size(btn_cancel, 80, 28);
-                lv_obj_set_pos(btn_cancel, 180, 72);
+                lv_obj_set_size(btn_cancel, 80, 18);
+                lv_obj_set_pos(btn_cancel, 180, 42);
                 lv_obj_set_style_bg_color(btn_cancel, lv_color_hex(0xB71C1C), 0);
                 lv_obj_set_style_radius(btn_cancel, 3, 0);
                 lv_obj_add_event_cb(btn_cancel, modal_cancel_cb, LV_EVENT_CLICKED, nullptr);
@@ -590,10 +770,103 @@ lv_obj_t* ui_settings_create(void)
             // Keyboard
             s_kb = lv_keyboard_create(s_modal);
             if (s_kb) {
-                lv_obj_set_size(s_kb, 320, 140);
-                lv_obj_set_pos(s_kb, 0, 100);
+                lv_obj_remove_flag(s_kb, LV_OBJ_FLAG_SCROLLABLE);
+                lv_obj_add_flag(s_kb, LV_OBJ_FLAG_CLICKABLE);
+                lv_obj_add_flag(s_kb, LV_OBJ_FLAG_PRESS_LOCK);
                 lv_keyboard_set_textarea(s_kb, s_ta);
                 lv_keyboard_set_mode(s_kb, LV_KEYBOARD_MODE_TEXT_LOWER);
+                lv_keyboard_set_popovers(s_kb, true);
+                // Strip internal padding so keys fill the widget
+                lv_obj_set_style_pad_all(s_kb, 0, 0);
+                lv_obj_set_style_pad_row(s_kb, 1, 0);
+                lv_obj_set_style_pad_column(s_kb, 1, 0);
+                lv_obj_set_style_border_width(s_kb, 0, 0);
+                // Shrink keys: smaller font and zero inner padding on buttons
+
+                lv_obj_set_style_pad_all(s_kb, 0, LV_PART_ITEMS);
+                // Set size/pos AFTER textarea to override any auto-layout
+                lv_obj_set_size(s_kb, 320, 178);
+                lv_obj_set_pos(s_kb, 0, 60);
+            }
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Scanned-AP picker modal
+    // -----------------------------------------------------------------------
+    s_pick_modal = lv_obj_create(s_scr);
+    if (s_pick_modal) {
+        lv_obj_set_size(s_pick_modal, 320, 240);
+        lv_obj_set_pos(s_pick_modal, 0, 0);
+        lv_obj_set_style_bg_color(s_pick_modal, lv_color_hex(0x000000), 0);
+        lv_obj_set_style_bg_opa(s_pick_modal, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(s_pick_modal, 0, 0);
+        lv_obj_set_style_pad_all(s_pick_modal, 0, 0);
+        lv_obj_add_flag(s_pick_modal, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_remove_flag(s_pick_modal, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(s_pick_modal, LV_OBJ_FLAG_HIDDEN);
+
+        s_pick_title = lv_label_create(s_pick_modal);
+        if (s_pick_title) {
+            lv_label_set_text(s_pick_title, "Pick SSID from scan");
+            lv_obj_set_style_text_font(s_pick_title, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_pick_title, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_align(s_pick_title, LV_ALIGN_TOP_MID, 0, 8);
+        }
+
+        s_pick_list = lv_obj_create(s_pick_modal);
+        if (s_pick_list) {
+            lv_obj_set_size(s_pick_list, 320, 160);
+            lv_obj_set_pos(s_pick_list, 0, 30);
+            lv_obj_set_style_bg_opa(s_pick_list, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(s_pick_list, 0, 0);
+            lv_obj_set_scroll_dir(s_pick_list, LV_DIR_VER);
+            lv_obj_add_flag(s_pick_list, LV_OBJ_FLAG_SCROLLABLE);
+            lv_obj_set_scrollbar_mode(s_pick_list, LV_SCROLLBAR_MODE_OFF);
+            lv_obj_set_scroll_snap_y(s_pick_list, LV_SCROLL_SNAP_START);
+
+
+        }
+
+        s_pick_empty = lv_label_create(s_pick_modal);
+        if (s_pick_empty) {
+            lv_label_set_text(s_pick_empty, "No APs found\nWait for scan...");
+            lv_obj_set_style_text_font(s_pick_empty, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_pick_empty, lv_color_hex(0x757575), 0);
+            lv_obj_set_style_text_align(s_pick_empty, LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_align(s_pick_empty, LV_ALIGN_CENTER, 0, -10);
+            lv_obj_add_flag(s_pick_empty, LV_OBJ_FLAG_HIDDEN);
+        }
+
+        lv_obj_t* btn_manual = lv_btn_create(s_pick_modal);
+        if (btn_manual) {
+            lv_obj_set_size(btn_manual, 120, 28);
+            lv_obj_set_pos(btn_manual, 20, 200);
+            lv_obj_set_style_bg_color(btn_manual, lv_color_hex(0x2E7D32), 0);
+            lv_obj_set_style_radius(btn_manual, 2, 0);
+            lv_obj_add_event_cb(btn_manual, pick_manual_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_t* lbl_manual = lv_label_create(btn_manual);
+            if (lbl_manual) {
+                lv_label_set_text(lbl_manual, "Type manually");
+                lv_obj_set_style_text_font(lbl_manual, &lv_font_montserrat_14, 0);
+                lv_obj_set_style_text_color(lbl_manual, lv_color_white(), 0);
+                lv_obj_center(lbl_manual);
+            }
+        }
+
+        lv_obj_t* btn_cancel2 = lv_btn_create(s_pick_modal);
+        if (btn_cancel2) {
+            lv_obj_set_size(btn_cancel2, 120, 28);
+            lv_obj_set_pos(btn_cancel2, 180, 200);
+            lv_obj_set_style_bg_color(btn_cancel2, lv_color_hex(0xB71C1C), 0);
+            lv_obj_set_style_radius(btn_cancel2, 2, 0);
+            lv_obj_add_event_cb(btn_cancel2, pick_cancel_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_t* lbl_cancel2 = lv_label_create(btn_cancel2);
+            if (lbl_cancel2) {
+                lv_label_set_text(lbl_cancel2, "Cancel");
+                lv_obj_set_style_text_font(lbl_cancel2, &lv_font_montserrat_14, 0);
+                lv_obj_set_style_text_color(lbl_cancel2, lv_color_white(), 0);
+                lv_obj_center(lbl_cancel2);
             }
         }
     }
@@ -642,6 +915,12 @@ void ui_settings_set_visible(bool visible)
         }
         if (s_ta) {
             lv_textarea_set_text(s_ta, "");
+        }
+        if (s_pick_modal) {
+            lv_obj_add_flag(s_pick_modal, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (s_panel) {
+            lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
         }
     }
 }

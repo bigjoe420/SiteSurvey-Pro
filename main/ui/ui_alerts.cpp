@@ -12,7 +12,8 @@
 // ---------------------------------------------------------------------------
 
 static bool s_visible;
-static lv_obj_t* s_rows[8];
+static lv_obj_t* s_panel;
+static lv_obj_t* s_rows[ALERT_MAX_LOG_ENTRIES];
 static lv_obj_t* s_empty_label;
 static lv_timer_t* s_timer;
 
@@ -30,12 +31,12 @@ static void refresh(lv_timer_t*)
 {
     if (!s_visible) return;
 
-    AlertEntry_t entries[8];
-    int n = alert_log_snapshot(entries, 8);
+    AlertEntry_t entries[ALERT_MAX_LOG_ENTRIES];
+    int n = alert_log_snapshot(entries, ALERT_MAX_LOG_ENTRIES);
 
     if (n == 0) {
         lv_obj_clear_flag(s_empty_label, LV_OBJ_FLAG_HIDDEN);
-        for (int i = 0; i < 8; i++) {
+        for (int i = 0; i < ALERT_MAX_LOG_ENTRIES; i++) {
             lv_obj_add_flag(s_rows[i], LV_OBJ_FLAG_HIDDEN);
         }
         return;
@@ -43,7 +44,7 @@ static void refresh(lv_timer_t*)
 
     lv_obj_add_flag(s_empty_label, LV_OBJ_FLAG_HIDDEN);
 
-    for (int i = 0; i < 8; i++) {
+    for (int i = 0; i < ALERT_MAX_LOG_ENTRIES; i++) {
         if (i < n) {
             lv_obj_clear_flag(s_rows[i], LV_OBJ_FLAG_HIDDEN);
             // row contains 3 labels: ts, target, rssi+type
@@ -137,17 +138,28 @@ lv_obj_t* ui_alerts_create(void)
     lv_obj_set_style_text_color(title, lv_color_hex(0xE8E8E8), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
 
-    // Empty state label
+    // Scrollable panel for alert rows
+    s_panel = lv_obj_create(scr);
+    lv_obj_set_size(s_panel, 320, 196);
+    lv_obj_set_pos(s_panel, 0, 44);
+    lv_obj_set_style_bg_color(s_panel, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(s_panel, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(s_panel, 0, 0);
+    lv_obj_set_style_pad_all(s_panel, 4, 0);
+    lv_obj_set_scroll_dir(s_panel, LV_DIR_VER);
+    lv_obj_set_scrollbar_mode(s_panel, LV_SCROLLBAR_MODE_OFF);
+
+    // Empty state label (centered on screen, not in panel)
     s_empty_label = lv_label_create(scr);
     lv_label_set_text(s_empty_label, "No alerts yet");
     lv_obj_set_style_text_color(s_empty_label, lv_color_hex(0x757575), 0);
     lv_obj_center(s_empty_label);
 
-    // Alert rows (newest first)
-    const int ROW_Y0 = 44;
+    // Alert rows (newest first) inside scrollable panel
+    const int ROW_Y0 = 0;
     const int ROW_H = 26;
-    for (int i = 0; i < 8; i++) {
-        s_rows[i] = make_row(scr, ROW_Y0 + i * ROW_H);
+    for (int i = 0; i < ALERT_MAX_LOG_ENTRIES; i++) {
+        s_rows[i] = make_row(s_panel, ROW_Y0 + i * ROW_H);
         lv_obj_add_flag(s_rows[i], LV_OBJ_FLAG_HIDDEN);
     }
 

@@ -31,6 +31,7 @@ typedef struct {
     uint8_t channel;
     wifi_auth_mode_t authmode;
     ssp_rssi_tier_t severity;
+    bool rogue;  // true if another AP shares this SSID but different BSSID
 } ScanResult_t;
 
 // Brings Wi-Fi up in scan-only station mode (never connects) and creates scan_queue.
