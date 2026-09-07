@@ -28,6 +28,7 @@
 #include "session_logger.h"
 #include "alert_engine.h"
 #include "led_rgb.h"
+#include "power_mgr.h"
 
 static const char* TAG = "SiteSurvey";
 
@@ -185,6 +186,7 @@ extern "C" void app_main(void)
     ESP_ERROR_CHECK(ret);
 
     ESP_ERROR_CHECK(lvgl_port_init());
+    ESP_ERROR_CHECK(power_mgr_init());
 
     // Splash owns the display first. Home screen is deferred via callback
     // until splash gates clear — preventing ~100+ widget objects + 25KB PSRAM
