@@ -2,11 +2,11 @@
 
 #include <cstdio>
 #include <cstring>
-#include <cstdint>
+#include "alert_engine.h"
+#include "power_mgr.h"
 #include <cstdlib>
 #include "esp_log.h"
 #include "ui_home.h"
-#include "alert_engine.h"
 #include "scan_engine.h"
 
 static bool s_visible;
@@ -27,6 +27,11 @@ static lv_obj_t* s_ssid_add_btn;
 static lv_obj_t* s_bssid_add_btn;
 static lv_obj_t* s_lbl_ssid_header;
 static lv_obj_t* s_lbl_bssid_header;
+
+// Power settings widgets
+static lv_obj_t* s_lbl_timeout;
+static lv_obj_t* s_lbl_dim;
+static lv_obj_t* s_switch_sleep;
 
 // Keyboard modal
 static lv_obj_t* s_modal;
@@ -113,6 +118,81 @@ static void refresh_bssid_list(void)
             lv_obj_remove_flag(s_bssid_add_btn, LV_OBJ_FLAG_HIDDEN);
         }
     }
+}
+
+// --- Power helpers ---
+static const uint16_t TIMEOUT_PRESETS[] = {0, 10, 30, 60, 120, 300};
+static const int TIMEOUT_COUNT = 6;
+
+static void refresh_power_labels(void)
+{
+    if (s_lbl_timeout) {
+        uint16_t t = power_mgr_get_timeout_s();
+        char buf[32];
+        if (t == 0) snprintf(buf, sizeof(buf), "Never");
+        else if (t < 60) snprintf(buf, sizeof(buf), "%us", t);
+        else snprintf(buf, sizeof(buf), "%um", t / 60);
+        lv_label_set_text(s_lbl_timeout, buf);
+    }
+    if (s_lbl_dim) {
+        uint8_t d = power_mgr_get_dim_pct();
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%u%%", d);
+        lv_label_set_text(s_lbl_dim, buf);
+    }
+    if (s_switch_sleep) {
+        if (power_mgr_get_sleep_en()) {
+            lv_obj_add_state(s_switch_sleep, LV_STATE_CHECKED);
+        } else {
+            lv_obj_clear_state(s_switch_sleep, LV_STATE_CHECKED);
+        }
+    }
+}
+
+static void timeout_minus_cb(lv_event_t*)
+{
+    uint16_t t = power_mgr_get_timeout_s();
+    int idx = 0;
+    for (int i = TIMEOUT_COUNT - 1; i >= 0; i--) {
+        if (TIMEOUT_PRESETS[i] < t) { idx = i; break; }
+    }
+    power_mgr_set_timeout_s(TIMEOUT_PRESETS[idx]);
+    refresh_power_labels();
+}
+
+static void timeout_plus_cb(lv_event_t*)
+{
+    uint16_t t = power_mgr_get_timeout_s();
+    int idx = TIMEOUT_COUNT - 1;
+    for (int i = 0; i < TIMEOUT_COUNT; i++) {
+        if (TIMEOUT_PRESETS[i] > t) { idx = i; break; }
+    }
+    power_mgr_set_timeout_s(TIMEOUT_PRESETS[idx]);
+    refresh_power_labels();
+}
+
+static void dim_minus_cb(lv_event_t*)
+{
+    uint8_t d = power_mgr_get_dim_pct();
+    if (d > 10) d -= 5;
+    else d = 10;
+    power_mgr_set_dim_pct(d);
+    refresh_power_labels();
+}
+
+static void dim_plus_cb(lv_event_t*)
+{
+    uint8_t d = power_mgr_get_dim_pct();
+    if (d < 50) d += 5;
+    else d = 50;
+    power_mgr_set_dim_pct(d);
+    refresh_power_labels();
+}
+
+static void sleep_toggle_cb(lv_event_t* e)
+{
+    lv_obj_t* sw = (lv_obj_t*)lv_event_get_target(e);
+    power_mgr_set_sleep_en(lv_obj_has_state(sw, LV_STATE_CHECKED));
 }
 
 static void save_config(void)
@@ -651,6 +731,129 @@ lv_obj_t* ui_settings_create(void)
         y += 24 + SECTION_GAP;
     }
 
+    // --- Power ---
+    if (s_panel) {
+        lv_obj_t* lbl_power = lv_label_create(s_panel);
+        if (lbl_power) {
+            lv_label_set_text(lbl_power, "Power");
+            lv_obj_set_style_text_font(lbl_power, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(lbl_power, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_pos(lbl_power, 8, y + 6);
+        }
+        y += ROW_H + GAP;
+
+        // Timeout
+        lv_obj_t* lbl_to_title = lv_label_create(s_panel);
+        if (lbl_to_title) {
+            lv_label_set_text(lbl_to_title, "Timeout");
+            lv_obj_set_style_text_font(lbl_to_title, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(lbl_to_title, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_pos(lbl_to_title, 8, y + 6);
+        }
+
+        s_lbl_timeout = lv_label_create(s_panel);
+        if (s_lbl_timeout) {
+            lv_obj_set_style_text_font(s_lbl_timeout, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_lbl_timeout, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_pos(s_lbl_timeout, 140, y + 6);
+        }
+
+        lv_obj_t* btn_to_minus = lv_btn_create(s_panel);
+        if (btn_to_minus) {
+            lv_obj_set_size(btn_to_minus, 28, 24);
+            lv_obj_set_pos(btn_to_minus, 230, y + 3);
+            lv_obj_set_style_bg_color(btn_to_minus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_radius(btn_to_minus, 2, 0);
+            lv_obj_add_event_cb(btn_to_minus, timeout_minus_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_set_ext_click_area(btn_to_minus, 12);
+            lv_obj_t* lbl_to_minus = lv_label_create(btn_to_minus);
+            if (lbl_to_minus) {
+                lv_label_set_text(lbl_to_minus, "-");
+                lv_obj_center(lbl_to_minus);
+            }
+        }
+
+        lv_obj_t* btn_to_plus = lv_btn_create(s_panel);
+        if (btn_to_plus) {
+            lv_obj_set_size(btn_to_plus, 28, 24);
+            lv_obj_set_pos(btn_to_plus, 264, y + 3);
+            lv_obj_set_style_bg_color(btn_to_plus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_radius(btn_to_plus, 2, 0);
+            lv_obj_add_event_cb(btn_to_plus, timeout_plus_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_set_ext_click_area(btn_to_plus, 12);
+            lv_obj_t* lbl_to_plus = lv_label_create(btn_to_plus);
+            if (lbl_to_plus) {
+                lv_label_set_text(lbl_to_plus, "+");
+                lv_obj_center(lbl_to_plus);
+            }
+        }
+        y += ROW_H + GAP;
+
+        // Dim level
+        lv_obj_t* lbl_dim_title = lv_label_create(s_panel);
+        if (lbl_dim_title) {
+            lv_label_set_text(lbl_dim_title, "Dim level");
+            lv_obj_set_style_text_font(lbl_dim_title, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(lbl_dim_title, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_pos(lbl_dim_title, 8, y + 6);
+        }
+
+        s_lbl_dim = lv_label_create(s_panel);
+        if (s_lbl_dim) {
+            lv_obj_set_style_text_font(s_lbl_dim, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_lbl_dim, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_pos(s_lbl_dim, 140, y + 6);
+        }
+
+        lv_obj_t* btn_dim_minus = lv_btn_create(s_panel);
+        if (btn_dim_minus) {
+            lv_obj_set_size(btn_dim_minus, 28, 24);
+            lv_obj_set_pos(btn_dim_minus, 230, y + 3);
+            lv_obj_set_style_bg_color(btn_dim_minus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_radius(btn_dim_minus, 2, 0);
+            lv_obj_add_event_cb(btn_dim_minus, dim_minus_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_set_ext_click_area(btn_dim_minus, 12);
+            lv_obj_t* lbl_dim_minus = lv_label_create(btn_dim_minus);
+            if (lbl_dim_minus) {
+                lv_label_set_text(lbl_dim_minus, "-");
+                lv_obj_center(lbl_dim_minus);
+            }
+        }
+
+        lv_obj_t* btn_dim_plus = lv_btn_create(s_panel);
+        if (btn_dim_plus) {
+            lv_obj_set_size(btn_dim_plus, 28, 24);
+            lv_obj_set_pos(btn_dim_plus, 264, y + 3);
+            lv_obj_set_style_bg_color(btn_dim_plus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_radius(btn_dim_plus, 2, 0);
+            lv_obj_add_event_cb(btn_dim_plus, dim_plus_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_set_ext_click_area(btn_dim_plus, 12);
+            lv_obj_t* lbl_dim_plus = lv_label_create(btn_dim_plus);
+            if (lbl_dim_plus) {
+                lv_label_set_text(lbl_dim_plus, "+");
+                lv_obj_center(lbl_dim_plus);
+            }
+        }
+        y += ROW_H + GAP;
+
+        // Light sleep
+        lv_obj_t* lbl_sleep = lv_label_create(s_panel);
+        if (lbl_sleep) {
+            lv_label_set_text(lbl_sleep, "Light sleep");
+            lv_obj_set_style_text_font(lbl_sleep, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(lbl_sleep, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_pos(lbl_sleep, 8, y + 6);
+        }
+
+        s_switch_sleep = lv_switch_create(s_panel);
+        if (s_switch_sleep) {
+            lv_obj_set_size(s_switch_sleep, 44, 22);
+            lv_obj_set_pos(s_switch_sleep, 260, y + 4);
+            lv_obj_add_event_cb(s_switch_sleep, sleep_toggle_cb, LV_EVENT_VALUE_CHANGED, nullptr);
+        }
+        y += ROW_H + SECTION_GAP;
+    }
+
     // --- Clear Alert Log ---
     if (s_panel) {
         lv_obj_t* btn_clear = lv_btn_create(s_panel);
@@ -886,6 +1089,7 @@ lv_obj_t* ui_settings_create(void)
     refresh_rssi_label();
     refresh_ssid_list();
     refresh_bssid_list();
+    refresh_power_labels();
 
     return s_scr;
 }
@@ -907,6 +1111,7 @@ void ui_settings_set_visible(bool visible)
         refresh_rssi_label();
         refresh_ssid_list();
         refresh_bssid_list();
+        refresh_power_labels();
     } else {
         // Ensure modal is hidden when leaving Settings so keyboard state
         // doesn't leak across screen transitions.

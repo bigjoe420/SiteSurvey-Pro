@@ -2,6 +2,7 @@
 
 #include "board_pins.h"
 #include "display.h"
+#include "power_mgr.h"
 #include "touch.h"
 #include "esp_check.h"
 #include "esp_heap_caps.h"
@@ -28,7 +29,7 @@ static void backlight_on_once(const char* why)
 {
     if (s_bl_on) return;
     s_bl_on = true;
-    display_set_backlight(true);
+    power_mgr_activity();
     ESP_LOGI(TAG, "backlight on: %s", why);
 }
 
@@ -49,15 +50,20 @@ static void flush_cb(lv_display_t* disp, const lv_area_t* area, uint8_t* px_map)
 
 static void touch_read_cb(lv_indev_t* indev, lv_indev_data_t* data)
 {
+    static bool was_pressed = false;
     int16_t x, y;
     bool pressed = touch_read_latest(&x, &y);
     if (pressed) {
         data->state = LV_INDEV_STATE_PRESSED;
         data->point.x = x;
         data->point.y = y;
+        if (!was_pressed) {
+            power_mgr_activity();
+        }
     } else {
         data->state = LV_INDEV_STATE_RELEASED;
     }
+    was_pressed = pressed;
 }
 
 static void tick_cb(void*)
