@@ -59,6 +59,15 @@ CONFIG_BT_NIMBLE_MAX_CONNECTIONS=1
 CONFIG_BT_NIMBLE_MAX_BONDS=0
 CONFIG_BT_NIMBLE_MAX_CCCDS=0
 CONFIG_BT_NIMBLE_L2CAP_COC_MAX_NUM=0
+# Observer-only: scan_ble.cpp uses only ble_gap_disc / ble_hs_adv_parse_fields.
+# Dropping the connection/GATT/security roles frees controller+host RAM,
+# which fixes BLE_ERR_MEM_CAPACITY (rc=519) on v6.1 with Wi-Fi coenabled.
+CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
+CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=n
+CONFIG_BT_NIMBLE_ROLE_BROADCASTER=n
+CONFIG_BT_NIMBLE_GATT_CLIENT=n
+CONFIG_BT_NIMBLE_GATT_SERVER=n
+CONFIG_BT_NIMBLE_SECURITY_ENABLE=n
 
 # -----------------------------------------------------------------------------
 # FreeRTOS

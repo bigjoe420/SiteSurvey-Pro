@@ -184,6 +184,127 @@ static void wifi_scan_task(void*)
     }
 }
 
+#include "nvs_flash.h"
+#include "nvs.h"
+
+static const char* SF_TAG = "scan_filter";
+
+#define SF_NVS_NS     "scan_filter"
+#define SF_KEY_BAND2  "band2"
+#define SF_KEY_BAND5  "band5"
+#define SF_KEY_RSSI   "minrssi"
+#define SF_KEY_PAT    "pattern"
+
+static ScanFilter_t s_filter = { true, true, -100, "" };
+static nvs_handle_t s_sf_nvs = 0;
+
+static void sf_nvs_load(void)
+{
+    if (s_sf_nvs == 0) return;
+    uint8_t v;
+    int8_t r;
+    size_t len = sizeof(s_filter.ssid_pattern);
+    if (nvs_get_u8(s_sf_nvs, SF_KEY_BAND2, &v) == ESP_OK) s_filter.band_2g = (v != 0);
+    if (nvs_get_u8(s_sf_nvs, SF_KEY_BAND5, &v) == ESP_OK) s_filter.band_5g = (v != 0);
+    if (nvs_get_i8(s_sf_nvs, SF_KEY_RSSI, &r) == ESP_OK) s_filter.min_rssi = r;
+    nvs_get_str(s_sf_nvs, SF_KEY_PAT, s_filter.ssid_pattern, &len);
+}
+
+static void sf_nvs_save(void)
+{
+    if (s_sf_nvs == 0) return;
+    nvs_set_u8(s_sf_nvs, SF_KEY_BAND2, s_filter.band_2g ? 1 : 0);
+    nvs_set_u8(s_sf_nvs, SF_KEY_BAND5, s_filter.band_5g ? 1 : 0);
+    nvs_set_i8(s_sf_nvs, SF_KEY_RSSI, s_filter.min_rssi);
+    nvs_set_str(s_sf_nvs, SF_KEY_PAT, s_filter.ssid_pattern);
+    nvs_commit(s_sf_nvs);
+}
+
+void scan_filter_init(void)
+{
+    esp_err_t ret = nvs_open(SF_NVS_NS, NVS_READWRITE, &s_sf_nvs);
+    if (ret != ESP_OK) {
+        ESP_LOGW(SF_TAG, "nvs_open failed (%s), using defaults", esp_err_to_name(ret));
+        s_sf_nvs = 0;
+    }
+    sf_nvs_load();
+    ESP_LOGI(SF_TAG, "filters: 2.4G=%s 5G=%s min_rssi=%d pat=%s",
+             s_filter.band_2g ? "on" : "off",
+             s_filter.band_5g ? "on" : "off",
+             s_filter.min_rssi,
+             s_filter.ssid_pattern);
+}
+
+const ScanFilter_t* scan_filter_get(void) { return &s_filter; }
+
+void scan_filter_set_band_2g(bool en) { s_filter.band_2g = en; sf_nvs_save(); }
+void scan_filter_set_band_5g(bool en) { s_filter.band_5g = en; sf_nvs_save(); }
+void scan_filter_set_min_rssi(int8_t dbm)
+{
+    if (dbm < -100) dbm = -100;
+    if (dbm > -30) dbm = -30;
+    s_filter.min_rssi = dbm;
+    sf_nvs_save();
+}
+void scan_filter_set_ssid_pattern(const char* pattern)
+{
+    if (!pattern) pattern = "";
+    strncpy(s_filter.ssid_pattern, pattern, sizeof(s_filter.ssid_pattern) - 1);
+    s_filter.ssid_pattern[sizeof(s_filter.ssid_pattern) - 1] = '\0';
+    sf_nvs_save();
+}
+
+static bool sf_matches(const ScanResult_t* ap)
+{
+    const ScanFilter_t* f = &s_filter;
+    if (ap->channel <= 14 && !f->band_2g) return false;
+    if (ap->channel > 14 && !f->band_5g) return false;
+    if (ap->rssi < f->min_rssi) return false;
+    if (f->ssid_pattern[0]) {
+        const char* ssid = (const char*)ap->ssid;
+        if (!ssid[0]) return false;  // hidden SSID can't match pattern
+        if (strstr(ssid, f->ssid_pattern) == nullptr) return false;
+    }
+    return true;
+}
+
+int scan_engine_snapshot_filtered(ScanResult_t* out, int max)
+{
+    taskENTER_CRITICAL(&s_pool_mux);
+    int n = 0;
+    for (const PoolEntry& e : s_pool) {
+        if (e.used && sf_matches(&e.ap) && n < max) out[n++] = e.ap;
+    }
+    taskEXIT_CRITICAL(&s_pool_mux);
+
+    // Strongest first
+    for (int i = 1; i < n; i++) {
+        ScanResult_t key = out[i];
+        int j = i - 1;
+        while (j >= 0 && out[j].rssi < key.rssi) {
+            out[j + 1] = out[j];
+            j--;
+        }
+        out[j + 1] = key;
+    }
+
+    // Rogue detection
+    for (int i = 0; i < n; i++) out[i].rogue = false;
+    for (int i = 0; i < n; i++) {
+        if (out[i].ssid[0] == 0) continue;
+        for (int j = i + 1; j < n; j++) {
+            if (out[j].ssid[0] == 0) continue;
+            if (strcmp((const char*)out[i].ssid, (const char*)out[j].ssid) == 0) {
+                if (memcmp(out[i].bssid, out[j].bssid, 6) != 0) {
+                    out[i].rogue = true;
+                    out[j].rogue = true;
+                }
+            }
+        }
+    }
+    return n;
+}
+
 esp_err_t scan_engine_init(void)
 {
     ESP_RETURN_ON_ERROR(esp_netif_init(), TAG, "netif init failed");

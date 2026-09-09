@@ -41,6 +41,11 @@ esp_err_t display_init(esp_lcd_panel_handle_t* out_panel)
     io_cfg.trans_queue_depth = 10;
     io_cfg.lcd_cmd_bits = 8;
     io_cfg.lcd_param_bits = 8;
+    // LVGL draw buffers live in PSRAM. On IDF v6.x the SPI master otherwise
+    // mallocs a per-flush internal DMA temp buffer (up to 30 KB); once WiFi+BLE
+    // exhaust internal DMA RAM every flush fails and the screen freezes.
+    // PSRAM on the C5 is DMA-capable — let the driver DMA from PSRAM directly.
+    io_cfg.flags.psram_dma_direct = 1;
     ESP_RETURN_ON_ERROR(esp_lcd_new_panel_io_spi((esp_lcd_spi_bus_handle_t)SPI2_HOST,
                                                  &io_cfg, &s_io),
                         TAG, "panel IO init failed");
