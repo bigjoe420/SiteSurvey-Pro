@@ -191,7 +191,7 @@ static void do_refresh(void)
     if (!s_wifi_visible) return;
 
     static ScanResult_t aps[MAX_ROWS];
-    int n = scan_engine_snapshot(aps, MAX_ROWS);
+    int n = scan_engine_snapshot_filtered(aps, MAX_ROWS);
 
     int built_this_call = 0;
     for (int i = 0; i < MAX_ROWS; i++) {

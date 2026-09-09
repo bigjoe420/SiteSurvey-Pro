@@ -149,7 +149,7 @@ static void do_refresh(void)
     if (!s_visible) return;
 
     ScanResult_t aps[64];
-    int n = scan_engine_snapshot(aps, 64);
+    int n = scan_engine_snapshot_filtered(aps, 64);
 
     // Aggregate per channel
     int8_t  max_rssi_2g[N_2G];

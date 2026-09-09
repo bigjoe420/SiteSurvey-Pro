@@ -33,6 +33,13 @@ static lv_obj_t* s_lbl_timeout;
 static lv_obj_t* s_lbl_dim;
 static lv_obj_t* s_switch_sleep;
 
+// Scan filter widgets
+static lv_obj_t* s_switch_band2;
+static lv_obj_t* s_switch_band5;
+static lv_obj_t* s_lbl_filter_rssi;
+static lv_obj_t* s_btn_filter_pattern;
+static lv_obj_t* s_lbl_filter_pattern;
+
 // Keyboard modal
 static lv_obj_t* s_modal;
 static lv_obj_t* s_modal_title;
@@ -174,8 +181,8 @@ static void timeout_plus_cb(lv_event_t*)
 static void dim_minus_cb(lv_event_t*)
 {
     uint8_t d = power_mgr_get_dim_pct();
-    if (d > 10) d -= 5;
-    else d = 10;
+    if (d > 5) d -= 5;
+    else d = 5;
     power_mgr_set_dim_pct(d);
     refresh_power_labels();
 }
@@ -193,6 +200,70 @@ static void sleep_toggle_cb(lv_event_t* e)
 {
     lv_obj_t* sw = (lv_obj_t*)lv_event_get_target(e);
     power_mgr_set_sleep_en(lv_obj_has_state(sw, LV_STATE_CHECKED));
+}
+
+// --- Scan filter callbacks ---
+static void refresh_filter_labels(void)
+{
+    const ScanFilter_t* f = scan_filter_get();
+    if (s_lbl_filter_rssi) {
+        char buf[16];
+        snprintf(buf, sizeof(buf), "%d dBm", f->min_rssi);
+        lv_label_set_text(s_lbl_filter_rssi, buf);
+    }
+    if (s_lbl_filter_pattern) {
+        lv_label_set_text(s_lbl_filter_pattern, f->ssid_pattern[0] ? f->ssid_pattern : "<any>");
+    }
+    if (s_switch_band2) {
+        if (f->band_2g) lv_obj_add_state(s_switch_band2, LV_STATE_CHECKED);
+        else lv_obj_clear_state(s_switch_band2, LV_STATE_CHECKED);
+    }
+    if (s_switch_band5) {
+        if (f->band_5g) lv_obj_add_state(s_switch_band5, LV_STATE_CHECKED);
+        else lv_obj_clear_state(s_switch_band5, LV_STATE_CHECKED);
+    }
+}
+
+static void band2_toggle_cb(lv_event_t* e)
+{
+    lv_obj_t* sw = (lv_obj_t*)lv_event_get_target(e);
+    scan_filter_set_band_2g(lv_obj_has_state(sw, LV_STATE_CHECKED));
+}
+
+static void band5_toggle_cb(lv_event_t* e)
+{
+    lv_obj_t* sw = (lv_obj_t*)lv_event_get_target(e);
+    scan_filter_set_band_5g(lv_obj_has_state(sw, LV_STATE_CHECKED));
+}
+
+static void filter_rssi_minus_cb(lv_event_t*)
+{
+    const ScanFilter_t* f = scan_filter_get();
+    int8_t r = f->min_rssi;
+    if (r > -100) r -= 5;
+    scan_filter_set_min_rssi(r);
+    refresh_filter_labels();
+}
+
+static void filter_rssi_plus_cb(lv_event_t*)
+{
+    const ScanFilter_t* f = scan_filter_get();
+    int8_t r = f->min_rssi;
+    if (r < -30) r += 5;
+    scan_filter_set_min_rssi(r);
+    refresh_filter_labels();
+}
+
+static void filter_pattern_cb(lv_event_t*)
+{
+    s_edit_type = 3;  // SSID filter pattern
+    s_edit_index = -1;
+    const ScanFilter_t* f = scan_filter_get();
+    lv_textarea_set_text(s_ta, f->ssid_pattern);
+    if (s_modal_title) lv_label_set_text(s_modal_title, "Filter SSID pattern");
+    if (s_pick_modal) lv_obj_add_flag(s_pick_modal, LV_OBJ_FLAG_HIDDEN);
+    if (s_panel) lv_obj_remove_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(s_modal, LV_OBJ_FLAG_HIDDEN);
 }
 
 static void save_config(void)
@@ -244,6 +315,9 @@ static void modal_ok_cb(lv_event_t*)
         if (val > -30) val = -30;
         s_cfg.rssi_threshold = (int8_t)val;
         refresh_rssi_label();
+    } else if (s_edit_type == 3) {  // SSID filter pattern
+        scan_filter_set_ssid_pattern(text);
+        refresh_filter_labels();
     }
 
     save_config();
@@ -518,15 +592,31 @@ static lv_obj_t* make_target_row(lv_obj_t* parent, int y, lv_event_cb_t edit_cb,
     lv_obj_set_style_radius(row, 2, 0);
     lv_obj_set_style_pad_all(row, 2, 0);
 
-    // Label (tappable for edit)
+    // Label (NOT clickable � prevents scroll-vs-tap confusion)
     lv_obj_t* lbl = lv_label_create(row);
     if (lbl) {
         lv_label_set_text(lbl, "---");
         lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
         lv_obj_set_style_text_color(lbl, lv_color_hex(0xE8E8E8), 0);
         lv_obj_set_pos(lbl, 4, 2);
-        lv_obj_add_flag(lbl, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_add_event_cb(lbl, edit_cb, LV_EVENT_CLICKED, user_data);
+        // Do NOT add CLICKABLE � label must not compete with panel scroll
+    }
+
+    // Edit button � dedicated tap target, keeps row body scroll-safe
+    lv_obj_t* edit = lv_btn_create(row);
+    if (edit) {
+        lv_obj_set_size(edit, 28, 20);
+        lv_obj_set_pos(edit, 220, 2);
+        lv_obj_set_style_bg_color(edit, lv_color_hex(0x2E7D32), 0);
+        lv_obj_set_style_radius(edit, 2, 0);
+        lv_obj_add_event_cb(edit, edit_cb, LV_EVENT_CLICKED, user_data);
+        lv_obj_t* edit_lbl = lv_label_create(edit);
+        if (edit_lbl) {
+            lv_label_set_text(edit_lbl, "E");
+            lv_obj_set_style_text_font(edit_lbl, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(edit_lbl, lv_color_white(), 0);
+            lv_obj_center(edit_lbl);
+        }
     }
 
     // Delete button
@@ -576,8 +666,10 @@ lv_obj_t* ui_settings_create(void)
         lv_obj_set_style_border_width(s_panel, 0, 0);
         lv_obj_set_style_pad_all(s_panel, 4, 0);
         lv_obj_set_scroll_dir(s_panel, LV_DIR_VER);
-        lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLL_MOMENTUM);
-        lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLL_ELASTIC);
+        lv_obj_set_scrollbar_mode(s_panel, LV_SCROLLBAR_MODE_OFF);
+        lv_obj_set_scroll_snap_y(s_panel, LV_SCROLL_SNAP_NONE);
+                lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(s_panel, LV_OBJ_FLAG_CLICKABLE);
     }
 
     int y = 0;
@@ -599,6 +691,7 @@ lv_obj_t* ui_settings_create(void)
         if (s_switch_enabled) {
             lv_obj_set_size(s_switch_enabled, 44, 22);
             lv_obj_set_pos(s_switch_enabled, 260, y + 4);
+            lv_obj_add_flag(s_switch_enabled, LV_OBJ_FLAG_PRESS_LOCK);
             lv_obj_add_event_cb(s_switch_enabled, toggle_cb, LV_EVENT_VALUE_CHANGED, nullptr);
         }
         y += ROW_H + GAP;
@@ -620,19 +713,18 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_style_text_font(s_lbl_rssi, &lv_font_montserrat_14, 0);
             lv_obj_set_style_text_color(s_lbl_rssi, lv_color_hex(0xE8E8E8), 0);
             lv_obj_set_pos(s_lbl_rssi, 140, y + 6);
-            lv_obj_add_flag(s_lbl_rssi, LV_OBJ_FLAG_CLICKABLE);
-            lv_obj_add_event_cb(s_lbl_rssi, rssi_label_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(s_lbl_rssi, 10);
+            // Label no longer clickable � use +/- buttons or keyboard modal
+            // to prevent scroll interference on the panel
         }
 
         lv_obj_t* btn_minus = lv_btn_create(s_panel);
         if (btn_minus) {
             lv_obj_set_size(btn_minus, 28, 24);
-            lv_obj_set_pos(btn_minus, 230, y + 3);
+            lv_obj_set_pos(btn_minus, 220, y + 3);
             lv_obj_set_style_bg_color(btn_minus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_minus, 2, 0);
             lv_obj_add_event_cb(btn_minus, rssi_minus_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(btn_minus, 12);
+            lv_obj_set_ext_click_area(btn_minus, 8);
             lv_obj_t* lbl_minus = lv_label_create(btn_minus);
             if (lbl_minus) {
                 lv_label_set_text(lbl_minus, "-");
@@ -643,11 +735,11 @@ lv_obj_t* ui_settings_create(void)
         lv_obj_t* btn_plus = lv_btn_create(s_panel);
         if (btn_plus) {
             lv_obj_set_size(btn_plus, 28, 24);
-            lv_obj_set_pos(btn_plus, 264, y + 3);
+            lv_obj_set_pos(btn_plus, 272, y + 3);
             lv_obj_set_style_bg_color(btn_plus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_plus, 2, 0);
             lv_obj_add_event_cb(btn_plus, rssi_plus_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(btn_plus, 12);
+            lv_obj_set_ext_click_area(btn_plus, 8);
             lv_obj_t* lbl_plus = lv_label_create(btn_plus);
             if (lbl_plus) {
                 lv_label_set_text(lbl_plus, "+");
@@ -731,6 +823,122 @@ lv_obj_t* ui_settings_create(void)
         y += 24 + SECTION_GAP;
     }
 
+    // --- Scan Filters ---
+    if (s_panel) {
+        lv_obj_t* lbl_filter = lv_label_create(s_panel);
+        if (lbl_filter) {
+            lv_label_set_text(lbl_filter, "Scan Filters");
+            lv_obj_set_style_text_font(lbl_filter, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(lbl_filter, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_pos(lbl_filter, 8, y + 6);
+        }
+        y += ROW_H + GAP;
+
+        // 2.4G
+        lv_obj_t* lbl_b2 = lv_label_create(s_panel);
+        if (lbl_b2) {
+            lv_label_set_text(lbl_b2, "2.4 GHz");
+            lv_obj_set_style_text_font(lbl_b2, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(lbl_b2, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_pos(lbl_b2, 8, y + 6);
+        }
+        s_switch_band2 = lv_switch_create(s_panel);
+        if (s_switch_band2) {
+            lv_obj_set_size(s_switch_band2, 44, 22);
+            lv_obj_set_pos(s_switch_band2, 260, y + 4);
+            lv_obj_add_flag(s_switch_band2, LV_OBJ_FLAG_PRESS_LOCK);
+            lv_obj_add_event_cb(s_switch_band2, band2_toggle_cb, LV_EVENT_VALUE_CHANGED, nullptr);
+        }
+        y += ROW_H + GAP;
+
+        // 5G
+        lv_obj_t* lbl_b5 = lv_label_create(s_panel);
+        if (lbl_b5) {
+            lv_label_set_text(lbl_b5, "5 GHz");
+            lv_obj_set_style_text_font(lbl_b5, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(lbl_b5, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_pos(lbl_b5, 8, y + 6);
+        }
+        s_switch_band5 = lv_switch_create(s_panel);
+        if (s_switch_band5) {
+            lv_obj_set_size(s_switch_band5, 44, 22);
+            lv_obj_set_pos(s_switch_band5, 260, y + 4);
+            lv_obj_add_flag(s_switch_band5, LV_OBJ_FLAG_PRESS_LOCK);
+            lv_obj_add_event_cb(s_switch_band5, band5_toggle_cb, LV_EVENT_VALUE_CHANGED, nullptr);
+        }
+        y += ROW_H + GAP;
+
+        // Min RSSI
+        lv_obj_t* lbl_frssi = lv_label_create(s_panel);
+        if (lbl_frssi) {
+            lv_label_set_text(lbl_frssi, "Min RSSI");
+            lv_obj_set_style_text_font(lbl_frssi, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(lbl_frssi, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_pos(lbl_frssi, 8, y + 6);
+        }
+        s_lbl_filter_rssi = lv_label_create(s_panel);
+        if (s_lbl_filter_rssi) {
+            lv_obj_set_style_text_font(s_lbl_filter_rssi, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_lbl_filter_rssi, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_pos(s_lbl_filter_rssi, 140, y + 6);
+        }
+        lv_obj_t* btn_fminus = lv_btn_create(s_panel);
+        if (btn_fminus) {
+            lv_obj_set_size(btn_fminus, 28, 24);
+            lv_obj_set_pos(btn_fminus, 220, y + 3);
+            lv_obj_set_style_bg_color(btn_fminus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_radius(btn_fminus, 2, 0);
+            lv_obj_add_event_cb(btn_fminus, filter_rssi_minus_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_set_ext_click_area(btn_fminus, 8);
+            lv_obj_t* lbl_fminus = lv_label_create(btn_fminus);
+            if (lbl_fminus) { lv_label_set_text(lbl_fminus, "-"); lv_obj_center(lbl_fminus); }
+        }
+        lv_obj_t* btn_fplus = lv_btn_create(s_panel);
+        if (btn_fplus) {
+            lv_obj_set_size(btn_fplus, 28, 24);
+            lv_obj_set_pos(btn_fplus, 272, y + 3);
+            lv_obj_set_style_bg_color(btn_fplus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_radius(btn_fplus, 2, 0);
+            lv_obj_add_event_cb(btn_fplus, filter_rssi_plus_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_set_ext_click_area(btn_fplus, 8);
+            lv_obj_t* lbl_fplus = lv_label_create(btn_fplus);
+            if (lbl_fplus) { lv_label_set_text(lbl_fplus, "+"); lv_obj_center(lbl_fplus); }
+        }
+        y += ROW_H + GAP;
+
+        // SSID pattern
+        lv_obj_t* lbl_pat = lv_label_create(s_panel);
+        if (lbl_pat) {
+            lv_label_set_text(lbl_pat, "SSID pattern");
+            lv_obj_set_style_text_font(lbl_pat, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(lbl_pat, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_pos(lbl_pat, 8, y + 6);
+        }
+        s_lbl_filter_pattern = lv_label_create(s_panel);
+        if (s_lbl_filter_pattern) {
+            lv_obj_set_style_text_font(s_lbl_filter_pattern, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_lbl_filter_pattern, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_pos(s_lbl_filter_pattern, 120, y + 6);
+            lv_obj_set_width(s_lbl_filter_pattern, 100);
+            lv_label_set_long_mode(s_lbl_filter_pattern, LV_LABEL_LONG_CLIP);
+        }
+        s_btn_filter_pattern = lv_btn_create(s_panel);
+        if (s_btn_filter_pattern) {
+            lv_obj_set_size(s_btn_filter_pattern, 60, 22);
+            lv_obj_set_pos(s_btn_filter_pattern, 230, y + 4);
+            lv_obj_set_style_bg_color(s_btn_filter_pattern, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_radius(s_btn_filter_pattern, 2, 0);
+            lv_obj_add_event_cb(s_btn_filter_pattern, filter_pattern_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_t* lbl_edit = lv_label_create(s_btn_filter_pattern);
+            if (lbl_edit) {
+                lv_label_set_text(lbl_edit, "Edit");
+                lv_obj_set_style_text_font(lbl_edit, &lv_font_montserrat_14, 0);
+                lv_obj_center(lbl_edit);
+            }
+        }
+        y += ROW_H + SECTION_GAP;
+    }
+
     // --- Power ---
     if (s_panel) {
         lv_obj_t* lbl_power = lv_label_create(s_panel);
@@ -761,11 +969,11 @@ lv_obj_t* ui_settings_create(void)
         lv_obj_t* btn_to_minus = lv_btn_create(s_panel);
         if (btn_to_minus) {
             lv_obj_set_size(btn_to_minus, 28, 24);
-            lv_obj_set_pos(btn_to_minus, 230, y + 3);
+            lv_obj_set_pos(btn_to_minus, 220, y + 3);
             lv_obj_set_style_bg_color(btn_to_minus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_to_minus, 2, 0);
             lv_obj_add_event_cb(btn_to_minus, timeout_minus_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(btn_to_minus, 12);
+            lv_obj_set_ext_click_area(btn_to_minus, 8);
             lv_obj_t* lbl_to_minus = lv_label_create(btn_to_minus);
             if (lbl_to_minus) {
                 lv_label_set_text(lbl_to_minus, "-");
@@ -776,11 +984,11 @@ lv_obj_t* ui_settings_create(void)
         lv_obj_t* btn_to_plus = lv_btn_create(s_panel);
         if (btn_to_plus) {
             lv_obj_set_size(btn_to_plus, 28, 24);
-            lv_obj_set_pos(btn_to_plus, 264, y + 3);
+            lv_obj_set_pos(btn_to_plus, 272, y + 3);
             lv_obj_set_style_bg_color(btn_to_plus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_to_plus, 2, 0);
             lv_obj_add_event_cb(btn_to_plus, timeout_plus_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(btn_to_plus, 12);
+            lv_obj_set_ext_click_area(btn_to_plus, 8);
             lv_obj_t* lbl_to_plus = lv_label_create(btn_to_plus);
             if (lbl_to_plus) {
                 lv_label_set_text(lbl_to_plus, "+");
@@ -808,11 +1016,11 @@ lv_obj_t* ui_settings_create(void)
         lv_obj_t* btn_dim_minus = lv_btn_create(s_panel);
         if (btn_dim_minus) {
             lv_obj_set_size(btn_dim_minus, 28, 24);
-            lv_obj_set_pos(btn_dim_minus, 230, y + 3);
+            lv_obj_set_pos(btn_dim_minus, 220, y + 3);
             lv_obj_set_style_bg_color(btn_dim_minus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_dim_minus, 2, 0);
             lv_obj_add_event_cb(btn_dim_minus, dim_minus_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(btn_dim_minus, 12);
+            lv_obj_set_ext_click_area(btn_dim_minus, 8);
             lv_obj_t* lbl_dim_minus = lv_label_create(btn_dim_minus);
             if (lbl_dim_minus) {
                 lv_label_set_text(lbl_dim_minus, "-");
@@ -823,11 +1031,11 @@ lv_obj_t* ui_settings_create(void)
         lv_obj_t* btn_dim_plus = lv_btn_create(s_panel);
         if (btn_dim_plus) {
             lv_obj_set_size(btn_dim_plus, 28, 24);
-            lv_obj_set_pos(btn_dim_plus, 264, y + 3);
+            lv_obj_set_pos(btn_dim_plus, 272, y + 3);
             lv_obj_set_style_bg_color(btn_dim_plus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_dim_plus, 2, 0);
             lv_obj_add_event_cb(btn_dim_plus, dim_plus_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(btn_dim_plus, 12);
+            lv_obj_set_ext_click_area(btn_dim_plus, 8);
             lv_obj_t* lbl_dim_plus = lv_label_create(btn_dim_plus);
             if (lbl_dim_plus) {
                 lv_label_set_text(lbl_dim_plus, "+");
@@ -849,6 +1057,7 @@ lv_obj_t* ui_settings_create(void)
         if (s_switch_sleep) {
             lv_obj_set_size(s_switch_sleep, 44, 22);
             lv_obj_set_pos(s_switch_sleep, 260, y + 4);
+            lv_obj_add_flag(s_switch_sleep, LV_OBJ_FLAG_PRESS_LOCK);
             lv_obj_add_event_cb(s_switch_sleep, sleep_toggle_cb, LV_EVENT_VALUE_CHANGED, nullptr);
         }
         y += ROW_H + SECTION_GAP;
@@ -883,7 +1092,7 @@ lv_obj_t* ui_settings_create(void)
         lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
         lv_obj_set_style_radius(back, 3, 0);
         lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
-        lv_obj_set_ext_click_area(back, 32);
+        lv_obj_set_ext_click_area(back, 16);
 
         lv_obj_t* back_lbl = lv_label_create(back);
         if (back_lbl) {
@@ -1090,6 +1299,7 @@ lv_obj_t* ui_settings_create(void)
     refresh_ssid_list();
     refresh_bssid_list();
     refresh_power_labels();
+    refresh_filter_labels();
 
     return s_scr;
 }
@@ -1112,6 +1322,7 @@ void ui_settings_set_visible(bool visible)
         refresh_ssid_list();
         refresh_bssid_list();
         refresh_power_labels();
+        refresh_filter_labels();
     } else {
         // Ensure modal is hidden when leaving Settings so keyboard state
         // doesn't leak across screen transitions.

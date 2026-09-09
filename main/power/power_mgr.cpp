@@ -138,7 +138,10 @@ esp_err_t power_mgr_init(void)
     }
     nvs_load();
 
-    // Start at full brightness
+    s_initialized = true;
+
+    // Start at full brightness (bl_apply needs s_initialized set first —
+    // otherwise the boot backlight never turns on and the splash runs dark)
     s_last_activity_ms = pdTICKS_TO_MS(xTaskGetTickCount());
     s_bl_state = SSP_PM_BL_FULL;
     bl_apply(100);
@@ -147,8 +150,6 @@ esp_err_t power_mgr_init(void)
     s_idle_timer = xTimerCreate("pm_idle", pdMS_TO_TICKS(1000), pdTRUE,
                                 nullptr, idle_timer_cb);
     if (s_idle_timer) xTimerStart(s_idle_timer, 0);
-
-    s_initialized = true;
     ESP_LOGI(TAG, "init ok: timeout=%us dim=%u%% sleep=%s",
              s_timeout_s, s_dim_pct, s_sleep_en ? "on" : "off");
     return ESP_OK;

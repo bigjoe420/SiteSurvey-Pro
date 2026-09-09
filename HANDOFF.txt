@@ -1,34 +1,45 @@
 ================================================================================
-SiteSurvey Pro — Session Handoff (2026-09-04 05:20)
+SiteSurvey Pro — Session Handoff (2026-09-09 05:15)
 ================================================================================
-Workspace: D:\SiteSurvey Pro | Target: ESP32-C5 / NM-CYD-C5 | IDF: v6.0.1 | Port: COM7
-GitHub: origin/main @ e2be03b (pushed)
+Workspace: D:\SiteSurvey Pro | Target: ESP32-C5 / NM-CYD-C5 | IDF: v6.1 | Port: COM3
+GitHub: manual backup only — no commits/pushes made this session (owner's policy)
 
 ================================================================================
-What just landed (commits since last handoff)
+What just landed (uncommitted working-tree changes)
 ================================================================================
-f0516f6 — Add WS2812 RGB LED driver + alert hook
-  - New module: main/led/led_rgb.cpp + led_rgb.h
-  - RMT TX driver on GPIO 27 (GRB order, 10 MHz resolution, copy encoder)
-  - alert_engine.cpp calls led_rgb_alert() on every target match
-  - LED flashes red for 100 ms on SSID/BSSID/RSSI-threshold alert
-  - Verified on-device: build clean, flash to COM7, LED responds
+1. main/power/power_mgr.cpp — boot backlight fix
+   - s_initialized = true set BEFORE the "Start at full brightness" bl_apply(100)
+   - Root cause of "screen black at boot, splash invisible" on the new computer
 
-e2be03b — Fix RMT struct field order and BIT0/BIT1 macro collision
-  - Renamed BIT0/BIT1 → SYM_ZERO/SYM_ONE (conflicted with esp_bit_defs.h macros)
-  - Fixed rmt_symbol_word_t field order: duration0, level0, duration1, level1
-  - Fixed rmt_tx_channel_config_t field order to match ESP-IDF v6.0.1 struct
-  - Added esp_check.h include for ESP_RETURN_ON_ERROR
+2. main/display/display.cpp — v6.1 SPI PSRAM DMA fix (boot freeze)
+   - io_cfg.flags.psram_dma_direct = 1 in display_init()
+   - v6.1 allocates a per-flush internal-RAM bounce buffer when LVGL draw buffers
+     live in PSRAM; once WiFi+BLE claimed internal RAM the alloc failed forever
+     ("Failed to allocate priv TX buffer" flood, ~120/s) and the panel froze on
+     the splash. Direct PSRAM DMA removes the bounce buffer entirely.
+
+3. sdkconfig.defaults (+ regenerated sdkconfig) — BLE observer-only trim
+   - ROLE_CENTRAL/PERIPHERAL/BROADCASTER=n, GATT_CLIENT/SERVER=n, SECURITY=n
+   - Fixes ble_scan rc=519 (BLE_ERR_MEM_CAPACITY) under WiFi+BLE coexistence
+   - GOTCHA: sdkconfig.defaults does NOT override an existing sdkconfig.
+     Must delete sdkconfig to force regeneration, else the build silently
+     keeps old config (binary size unchanged is the tell: 0x1d79e0 → 0x1c1250).
+
+Binary: 0x1c1250 (~1.77 MB), 12% free. Verified on COM3 via 40 s clean boot capture
+(boot_log2_clean.txt): zero SPI/LCD errors, zero BLE errors, BLE scan started per
+cycle, WiFi cycle total=43, backlight 806 ms, gates satisfied 24.9 s.
 
 ================================================================================
 Current code state
 ================================================================================
-- HEAD: e2be03b on origin/main
-- Binary: 0x1bf6b0 (~1.8 MB), 13% free in app partition
-- Build: verified clean compile via PowerShell idfenv.ps1
-- Flash: verified on COM7, hash verified, hard reset via RTS
+- HEAD: e2be03b on origin/main (unchanged — working tree dirty with above fixes)
+- Build: python idf_run.py build  (Git Bash)
+- Flash: python idf_run.py -p COM3 flash
+- PowerShell: powershell -File tools\idfenv.ps1 idf.py build / ... -p COM3 flash
+- Monitor: powershell -File tools\idfenv.ps1 idf.py -p COM3 monitor (Ctrl+] exits)
+- Git Bash monitor gotcha: orphaned idf_monitor processes hold COM3 — use
+  capture_full_boot.py (captures N seconds, taskkills the whole monitor tree)
 - Docs: KIMI.md, ROADMAP.md, PROGRESS.md are local-only via .git/info/exclude
-  (ROADMAP.md was cleaned of duplicate Phase entries this session)
 
 ================================================================================
 Feature status snapshot
@@ -68,7 +79,21 @@ Critical lessons for next session
 2. BIT0/BIT1 are macros in esp_bit_defs.h. Never use them as variable names.
 3. ESP_RETURN_ON_ERROR requires #include "esp_check.h".
 4. Build via: powershell -File tools/idfenv.ps1 idf.py build
-5. Flash via: powershell -File tools/idfenv.ps1 idf.py flash -p COM7
+5. Flash via: powershell -File tools/idfenv.ps1 idf.py flash -p COM3
+   (Git Bash: python idf_run.py build / python idf_run.py -p COM3 flash —
+    v6.1 refuses MSYS; idf_run.py strips MSYSTEM and runs export.bat under cmd)
+6. power_mgr bl_apply() needs s_initialized=true FIRST — never apply brightness
+   before the init flag is set, or the boot backlight silently stays off.
+7. On IDF v6.1, PSRAM-resident LVGL draw buffers need
+   esp_lcd_panel_io_spi_config_t.flags.psram_dma_direct = 1, or the SPI driver
+   malloc's a per-flush internal-RAM bounce buffer that fails once WiFi+BLE
+   are up → frozen splash, "Failed to allocate priv TX buffer" flood.
+8. Editing sdkconfig.defaults has NO effect while sdkconfig exists. Delete
+   sdkconfig (build regenerates it) — unchanged binary size means the config
+   change never took.
+9. NimBLE observer-only (no central/peripheral/GATT/security) is required for
+   WiFi+BLE coexistence on ESP32-C5 v6.1 — full stack hits
+   BLE_ERR_MEM_CAPACITY (rc=519).
 
 ================================================================================
 Read order on session start
