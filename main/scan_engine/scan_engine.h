@@ -34,6 +34,26 @@ typedef struct {
     bool rogue;  // true if another AP shares this SSID but different BSSID
 } ScanResult_t;
 
+typedef struct {
+    bool band_2g;          // show 2.4 GHz APs
+    bool band_5g;          // show 5 GHz APs
+    int8_t min_rssi;       // minimum RSSI to display (-100 .. -30)
+    char ssid_pattern[33]; // substring match; empty = match all
+} ScanFilter_t;
+
+// Initialize filter subsystem (loads from NVS). Call after nvs_flash_init().
+void scan_filter_init(void);
+
+const ScanFilter_t* scan_filter_get(void);
+
+void scan_filter_set_band_2g(bool en);
+void scan_filter_set_band_5g(bool en);
+void scan_filter_set_min_rssi(int8_t dbm);
+void scan_filter_set_ssid_pattern(const char* pattern);
+
+// Same as scan_engine_snapshot but applies ScanFilter_t rules.
+int scan_engine_snapshot_filtered(ScanResult_t* out, int max);
+
 // Brings Wi-Fi up in scan-only station mode (never connects) and creates scan_queue.
 esp_err_t scan_engine_init(void);
 
