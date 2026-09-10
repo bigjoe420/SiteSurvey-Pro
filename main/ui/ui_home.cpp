@@ -94,6 +94,7 @@ static void gps_btn_cb(lv_event_t*)
     ui_ble_set_visible(false);
     ui_env_set_visible(false);
     ui_spectrum_set_visible(false);
+    ui_gps_set_visible(false);
     ui_alerts_set_visible(false);
     ui_settings_set_visible(false);
 }
@@ -176,7 +177,7 @@ lv_obj_t* ui_home_create(void)
     const int Y3 = 180;   // 128 + 44 + 8
 
     make_block(s_home, "Wi-Fi",        lv_color_hex(0x4CAF50), wifi_btn_cb,     X0, Y0, 144);
-    make_block(s_home, "BLE",          lv_color_hex(0x00BCD4), ble_btn_cb,      X1, Y0, 144);
+    make_block(s_home, "BLUETOOTH",    lv_color_hex(0x00BCD4), ble_btn_cb,      X1, Y0, 144);
     make_block(s_home, "SPECTRUM",     lv_color_hex(0xFF9800), spectrum_btn_cb, X0, Y1, 144);
     make_block(s_home, "ENVIRONMENT",  lv_color_hex(0x2196F3), env_btn_cb,      X1, Y1, 144);
     make_block(s_home, "GPS",          lv_color_hex(0x9C27B0), gps_btn_cb,      X0, Y2, 144);
