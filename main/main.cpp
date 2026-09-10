@@ -30,6 +30,7 @@
 #include "alert_engine.h"
 #include "led_rgb.h"
 #include "power_mgr.h"
+#include "flash_broker.h"
 
 static const char* TAG = "SiteSurvey";
 
@@ -236,6 +237,11 @@ extern "C" void app_main(void)
     scan_filter_init();
     log_dma_heap("after scan_filter_init");
 
+    // Flash-write broker: NVS commits requested by PSRAM-stack tasks (UI)
+    // run here on an internal-RAM stack. Must exist before the UI task starts.
+    // BISECT: disabled to test boot without the broker task
+    // flash_broker_init();
+
     // Splash owns the display first. Home screen is deferred via callback
     // until splash gates clear — preventing ~100+ widget objects + 25KB PSRAM
     // from pressuring memory while the waterfall animation runs.
@@ -247,5 +253,8 @@ extern "C" void app_main(void)
 
     // Spin heavy init into a background task at prio 1.  ui_task (prio 24)
     // will always preempt it, so the splash animation never stalls.
-    xTaskCreateWithCaps(late_init_task, "late_init", 6144, nullptr, 1, nullptr, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    // INTERNAL stack: WiFi/BLE init performs NVS flash writes (default config
+    // on first boot, IRK persist); a PSRAM stack is unreachable while the
+    // cache is down during those writes and locks the CPU.
+    xTaskCreate(late_init_task, "late_init", 6144, nullptr, 1, nullptr);
 }

@@ -1,4 +1,5 @@
 #include "scan_engine.h"
+#include "flash_broker.h"
 
 #include <cstring>
 #include "esp_check.h"
@@ -211,7 +212,7 @@ static void sf_nvs_load(void)
     nvs_get_str(s_sf_nvs, SF_KEY_PAT, s_filter.ssid_pattern, &len);
 }
 
-static void sf_nvs_save(void)
+static void sf_nvs_save_now(void)
 {
     if (s_sf_nvs == 0) return;
     nvs_set_u8(s_sf_nvs, SF_KEY_BAND2, s_filter.band_2g ? 1 : 0);
@@ -219,6 +220,18 @@ static void sf_nvs_save(void)
     nvs_set_i8(s_sf_nvs, SF_KEY_RSSI, s_filter.min_rssi);
     nvs_set_str(s_sf_nvs, SF_KEY_PAT, s_filter.ssid_pattern);
     nvs_commit(s_sf_nvs);
+}
+
+static void sf_nvs_save_tramp(void*)
+{
+    sf_nvs_save_now();
+}
+
+// NVS commit erases/writes flash; the setters run on the UI task (PSRAM
+// stack), which is unreachable while the cache is down during the write.
+static void sf_nvs_save(void)
+{
+    flash_broker_exec(sf_nvs_save_tramp, nullptr);
 }
 
 void scan_filter_init(void)
