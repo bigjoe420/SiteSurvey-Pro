@@ -4,6 +4,7 @@
 #include <cstring>
 #include "alert_engine.h"
 #include "power_mgr.h"
+#include "led_rgb.h"
 #include <cstdlib>
 #include "esp_log.h"
 #include "ui_home.h"
@@ -220,6 +221,12 @@ static void sleep_toggle_cb(lv_event_t* e)
 {
     lv_obj_t* sw = (lv_obj_t*)lv_event_get_target(e);
     power_mgr_set_sleep_en(lv_obj_has_state(sw, LV_STATE_CHECKED));
+}
+
+static void power_off_cb(lv_event_t*)
+{
+    led_rgb_off();
+    power_mgr_power_off();  // deep sleep; never returns
 }
 
 // --- Scan filter callbacks ---
@@ -1286,7 +1293,25 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_pos(s_switch_sleep, 260, y + 4);
             lv_obj_add_event_cb(s_switch_sleep, sleep_toggle_cb, LV_EVENT_VALUE_CHANGED, nullptr);
         }
-        y += ROW_H + SECTION_GAP;
+        y += ROW_H + GAP;
+
+        // Power off - deep sleep; wake with the BOOT button (GPIO0)
+        lv_obj_t* btn_pwr = lv_btn_create(s_panel);
+        if (btn_pwr) {
+            lv_obj_set_size(btn_pwr, 160, 30);
+            lv_obj_set_pos(btn_pwr, 80, y);
+            lv_obj_set_style_bg_color(btn_pwr, lv_color_hex(0xB71C1C), 0);
+            lv_obj_set_style_radius(btn_pwr, 3, 0);
+            lv_obj_add_event_cb(btn_pwr, power_off_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_t* lbl_pwr = lv_label_create(btn_pwr);
+            if (lbl_pwr) {
+                lv_label_set_text(lbl_pwr, "Power Off");
+                lv_obj_set_style_text_font(lbl_pwr, &lv_font_montserrat_14, 0);
+                lv_obj_set_style_text_color(lbl_pwr, lv_color_white(), 0);
+                lv_obj_center(lbl_pwr);
+            }
+        }
+        y += 30 + SECTION_GAP;
     }
 
     // --- Firmware ---

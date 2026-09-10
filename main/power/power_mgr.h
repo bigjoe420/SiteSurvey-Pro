@@ -49,3 +49,7 @@ void    power_mgr_set_dim_pct(uint8_t pct);
 // Light-sleep enable: CPU sleeps between scans when idle.
 bool power_mgr_get_sleep_en(void);
 void power_mgr_set_sleep_en(bool en);
+
+// Full power off: backlight off, then deep sleep. Wake by pressing the BOOT
+// button (GPIO0, held low). Consumes only RTC-domain power while off.
+void power_mgr_power_off(void);
