@@ -223,10 +223,27 @@ static void sleep_toggle_cb(lv_event_t* e)
     power_mgr_set_sleep_en(lv_obj_has_state(sw, LV_STATE_CHECKED));
 }
 
-static void power_off_cb(lv_event_t*)
+// One-shot LVGL timer: shows the wake hint for ~1.5s (the label gets
+// rendered in the meantime - blocking inside the click handler would freeze
+// the flush), then enters deep sleep.
+static void power_off_timer_cb(lv_timer_t* t)
 {
+    lv_timer_del(t);
     led_rgb_off();
     power_mgr_power_off();  // deep sleep; never returns
+}
+
+static void power_off_cb(lv_event_t* e)
+{
+    lv_obj_t* btn = (lv_obj_t*)lv_event_get_target(e);
+    lv_obj_t* lbl = lv_obj_get_child(btn, 0);
+    if (lbl) {
+        lv_label_set_text(lbl, "Sleeping - press BOOT to wake");
+        lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+    }
+    lv_obj_set_style_bg_color(btn, lv_color_hex(0x5A1010), 0);
+    lv_obj_clear_flag(btn, LV_OBJ_FLAG_CLICKABLE);  // ignore repeat taps
+    lv_timer_create(power_off_timer_cb, 1500, nullptr);
 }
 
 // --- Scan filter callbacks ---
@@ -908,7 +925,10 @@ lv_obj_t* ui_settings_create(void)
         // never scrolls. Buttons/switches are children and still win hits.
         lv_obj_add_flag(s_panel, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_clear_flag(s_panel, LV_OBJ_FLAG_SCROLL_ELASTIC);
-        lv_obj_clear_flag(s_panel, LV_OBJ_FLAG_SCROLL_MOMENTUM);
+        // Momentum ON: a flick carries the list after release. ELASTIC stays
+        // OFF so the list no longer bounces back at the edges (that bounce,
+        // not momentum, was the historical complaint).
+        lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLL_MOMENTUM);
         lv_obj_set_scroll_dir(s_panel, LV_DIR_VER);
         lv_obj_set_scrollbar_mode(s_panel, LV_SCROLLBAR_MODE_OFF);
         lv_obj_set_scroll_snap_y(s_panel, LV_SCROLL_SNAP_NONE);
