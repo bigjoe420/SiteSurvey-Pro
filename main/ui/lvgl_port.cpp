@@ -33,19 +33,37 @@ static void backlight_on_once(const char* why)
     ESP_LOGI(TAG, "backlight on: %s", why);
 }
 
+// Called by the panel IO driver when the SPI DMA transfer for a color flush
+// actually completes. With psram_dma_direct=1 the buffer lives in PSRAM and
+// DMA reads directly from it; we must not tell LVGL the buffer is free until
+// the DMA engine is done, otherwise LVGL may render into it while DMA is
+// still reading — causing corruption or intermittent hangs.
+static bool flush_done_cb(esp_lcd_panel_io_handle_t panel_io,
+                          esp_lcd_panel_io_event_data_t* edata,
+                          void* user_ctx)
+{
+    lv_display_t* disp = (lv_display_t*)user_ctx;
+    lv_display_flush_ready(disp);
+    return false; // allow default handler to run as well
+}
+
 static void flush_cb(lv_display_t* disp, const lv_area_t* area, uint8_t* px_map)
 {
-    // draw_bitmap queues the DMA transfer and returns (non-blocking for the
-    // queue; brief block only if the driver's internal queue is full).  With
-    // double-buffered partial mode, LVGL renders into the other buffer while
-    // DMA reads from this one, so we can signal flush-ready immediately.
-    esp_lcd_panel_draw_bitmap(s_panel, area->x1, area->y1,
-                              area->x2 + 1, area->y2 + 1, px_map);
-
     if (lv_display_flush_is_last(disp)) {
         s_first_frame_done = true;
     }
-    lv_display_flush_ready(disp);
+
+    // Queue the DMA transfer. With psram_dma_direct=1 the buffer is in PSRAM
+    // and the SPI peripheral DMAs directly from it. We must NOT call
+    // lv_display_flush_ready until the DMA engine actually finishes reading.
+    esp_err_t err = esp_lcd_panel_draw_bitmap(s_panel, area->x1, area->y1,
+                                               area->x2 + 1, area->y2 + 1, px_map);
+    if (err != ESP_OK) {
+        // Queueing failed (e.g. driver queue full) — no DMA in progress.
+        // Signal ready immediately so LVGL doesn't deadlock.
+        lv_display_flush_ready(disp);
+    }
+    // If queueing succeeded, flush_done_cb fires when DMA completes.
 }
 
 static void touch_read_cb(lv_indev_t* indev, lv_indev_data_t* data)
@@ -121,6 +139,8 @@ esp_err_t lvgl_port_init(void)
     lv_display_set_color_format(s_disp, LV_COLOR_FORMAT_RGB565_SWAPPED);
     lv_display_set_buffers(s_disp, buf1, buf2, BUF_SIZE, LV_DISPLAY_RENDER_MODE_PARTIAL);
     lv_display_set_flush_cb(s_disp, flush_cb);
+    ESP_RETURN_ON_ERROR(display_register_flush_done_cb(flush_done_cb, s_disp),
+                        TAG, "flush done cb register failed");
 
     lv_indev_t* indev = lv_indev_create();
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
