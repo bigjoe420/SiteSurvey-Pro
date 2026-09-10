@@ -26,7 +26,8 @@ idf_component_register(
          "led/led_rgb.cpp"
          "power/power_mgr.cpp"
          "ota/ota_update.cpp"
-    INCLUDE_DIRS "include" "display" "touch" "ui" "scan_engine" "ble" "sensors" "storage" "alerts" "led" "power" "ota"
+         "flash/flash_broker.cpp"
+    INCLUDE_DIRS "include" "display" "touch" "ui" "scan_engine" "ble" "sensors" "storage" "alerts" "led" "power" "ota" "flash"
     REQUIRES esp_driver_gpio esp_driver_spi esp_driver_uart esp_driver_i2c esp_driver_sdspi esp_driver_rmt esp_driver_ledc esp_lcd esp_timer esp_event esp_netif esp_wifi nvs_flash fatfs sdmmc bt lvgl__lvgl app_update
 )
 

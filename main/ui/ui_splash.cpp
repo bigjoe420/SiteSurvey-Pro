@@ -38,6 +38,15 @@ static void deferred_delete_splash_cb(lv_timer_t* timer)
 static void gate_cb(lv_timer_t* timer)
 {
     if (s_dismissed || !s_scan_ready || !s_env_ready) return;
+
+    // If the user already navigated away from the splash (or it was skipped),
+    // don't stomp the active screen — just retire this timer.
+    if (lv_screen_active() != s_splash_scr || !s_splash_scr) {
+        s_dismissed = true;
+        lv_timer_delete(timer);
+        return;
+    }
+
     s_dismissed = true;
     ESP_LOGI(TAG, "gates satisfied (first AP + first BME680 read) - loading home");
 

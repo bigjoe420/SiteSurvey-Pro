@@ -725,8 +725,10 @@ static void ota_flash_cb(lv_event_t*)
     ota_ui_state(OTA_STATE_FLASH);
     lv_bar_set_value(s_ota_bar, 0, LV_ANIM_OFF);
     lv_label_set_text(s_ota_status, "Writing firmware... 0%");
+    // Flash writes erase sectors with the cache disabled — the task doing
+    // them must have an internal-RAM stack (PSRAM is unreachable mid-write).
     BaseType_t ok = xTaskCreateWithCaps(ota_flash_task, "ota_flash", 6144, &s_ota_args,
-                                        5, nullptr, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+                                        5, nullptr, MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT);
     if (ok != pdPASS) {
         s_ota_flashing = false;
         char* msg = (char*)malloc(48);
@@ -900,7 +902,11 @@ lv_obj_t* ui_settings_create(void)
         lv_obj_set_scrollbar_mode(s_panel, LV_SCROLLBAR_MODE_OFF);
         lv_obj_set_scroll_snap_y(s_panel, LV_SCROLL_SNAP_NONE);
         lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_remove_flag(s_panel, LV_OBJ_FLAG_CLICKABLE);
+        // CLICKABLE is required for drag-to-scroll: LVGL's hit test ignores
+        // non-clickable objects, so without this, touches on labels/empty
+        // space fall through to the (non-scrollable) screen and the panel
+        // never scrolls. Buttons/switches are children and still win hits.
+        lv_obj_add_flag(s_panel, LV_OBJ_FLAG_CLICKABLE);
         lv_obj_clear_flag(s_panel, LV_OBJ_FLAG_SCROLL_ELASTIC);
         lv_obj_clear_flag(s_panel, LV_OBJ_FLAG_SCROLL_MOMENTUM);
         lv_obj_set_scroll_dir(s_panel, LV_DIR_VER);
@@ -1682,8 +1688,7 @@ lv_obj_t* ui_settings_create(void)
 }
 
 void ui_settings_set_visible(bool visible)
-{
-    s_visible = visible;
+{    s_visible = visible;
     if (visible) {
         // Reload config in case it changed externally
         const AlertConfig_t* cfg = alert_config_get();
@@ -1729,4 +1734,3 @@ void ui_settings_set_visible(bool visible)
         }
     }
 }
-
