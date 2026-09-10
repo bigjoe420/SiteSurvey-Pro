@@ -122,3 +122,12 @@ CONFIG_LV_MEM_POOL_EXPAND_SIZE_KILOBYTES=256
 # Disable LVGL NULL-pointer asserts. When OOM strikes, lv_obj_create returns NULL
 # instead of hanging in while(1). Existing NULL guards in the UI code handle it.
 # CONFIG_LV_USE_ASSERT_NULL is not set
+
+# -----------------------------------------------------------------------------
+# Application version
+# -----------------------------------------------------------------------------
+# Fixed version string baked into every image (shown on Settings > Firmware
+# and used by the OTA same-version warning). Bump before each release and tag
+# the commit with the same number.
+CONFIG_APP_PROJECT_VER_FROM_CONFIG=y
+CONFIG_APP_PROJECT_VER="0.9.0"
