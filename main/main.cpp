@@ -71,6 +71,16 @@ static void late_init_task(void*)
     // Give the splash one full frame (10 ms) before init hogs flash/SPI bus
     vTaskDelay(pdMS_TO_TICKS(10));
 
+    // SD init FIRST — before WiFi/BLE consume DMA-capable internal RAM.
+    // With psram_dma_direct=1 the display DMAs from PSRAM, but SDSPI still
+    // needs small internal DMA buffers for CMD/response transactions. Once
+    // WiFi (prio 23) and NimBLE (prio 21) allocate their descriptors there
+    // is often not enough contiguous DMA RAM left for sdmmc_send_cmd.
+    esp_err_t sd_err = sd_card_init();
+    if (sd_err == ESP_OK) {
+        session_logger_init();
+    }
+
     ESP_ERROR_CHECK(scan_engine_init());
     ESP_ERROR_CHECK(sensors_init());
     ESP_ERROR_CHECK(ble_scan_init());
@@ -93,10 +103,6 @@ static void late_init_task(void*)
     scan_engine_start_task();
     sensors_start_task();
     ble_scan_start_task();
-
-    // Non-fatal: an absent card only means no session logging this boot
-    sd_card_init();
-    session_logger_init();
 
     // Latest GPS state cached for session logging (updated every 5 s).
     GpsState latest_gps = {};
