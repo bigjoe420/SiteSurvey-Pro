@@ -664,7 +664,14 @@ lv_obj_t* ui_settings_create(void)
         lv_obj_set_style_bg_color(s_panel, lv_color_black(), 0);
         lv_obj_set_style_bg_opa(s_panel, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(s_panel, 0, 0);
-        lv_obj_set_style_pad_all(s_panel, 4, 0);
+        lv_obj_set_style_pad_all(s_panel, 0, 0);
+        lv_obj_set_scroll_dir(s_panel, LV_DIR_VER);
+        lv_obj_set_scrollbar_mode(s_panel, LV_SCROLLBAR_MODE_OFF);
+        lv_obj_set_scroll_snap_y(s_panel, LV_SCROLL_SNAP_NONE);
+        lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_remove_flag(s_panel, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_clear_flag(s_panel, LV_OBJ_FLAG_SCROLL_ELASTIC);
+        lv_obj_clear_flag(s_panel, LV_OBJ_FLAG_SCROLL_MOMENTUM);
         lv_obj_set_scroll_dir(s_panel, LV_DIR_VER);
         lv_obj_set_scrollbar_mode(s_panel, LV_SCROLLBAR_MODE_OFF);
         lv_obj_set_scroll_snap_y(s_panel, LV_SCROLL_SNAP_NONE);
@@ -1320,6 +1327,9 @@ void ui_settings_set_visible(bool visible)
         refresh_filter_labels();
 
         // Reset scroll state for smooth entry
+        if (s_panel) {
+            lv_obj_scroll_to_y(s_panel, 0, LV_ANIM_OFF);
+        }
         if (s_panel) {
             lv_obj_update_layout(s_panel);
             lv_obj_scroll_to_y(s_panel, 0, LV_ANIM_OFF);
