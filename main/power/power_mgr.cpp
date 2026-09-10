@@ -10,6 +10,7 @@
 #include "freertos/task.h"
 #include "freertos/timers.h"
 #include "esp_sleep.h"
+#include "driver/rtc_io.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 
@@ -233,8 +234,18 @@ void power_mgr_power_off(void)
     // let the log line flush before the UART goes quiet
     vTaskDelay(pdMS_TO_TICKS(150));
     // GPIO0 is RTC-capable on ESP32-C5 (RTCIO channel 0) -> EXT1 deep-sleep
-    // wakeup; BOOT button pulls it low. Needs the internal pull-up (default
-    // RTC_PERIPH domain config) or an external resistor.
-    esp_sleep_enable_ext1_wakeup_io(1ULL << SSP_WAKE_PIN, ESP_EXT1_WAKEUP_ANY_LOW);
+    // wakeup; BOOT button pulls it low. The internal pull-up must be enabled
+    // explicitly and the RTC_PERIPH power domain kept on, otherwise the pin
+    // floats low in deep sleep and ANY_LOW fires instantly -> the device
+    // "resets" the moment it should be sleeping.
+    rtc_gpio_pullup_en(SSP_WAKE_PIN);
+    rtc_gpio_pulldown_dis(SSP_WAKE_PIN);
+    esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_ON);
+    esp_err_t err = esp_sleep_enable_ext1_wakeup_io(1ULL << SSP_WAKE_PIN, ESP_EXT1_WAKEUP_ANY_LOW);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "ext1 wakeup config failed (%s) - aborting power off", esp_err_to_name(err));
+        return;
+    }
+    vTaskDelay(pdMS_TO_TICKS(50));  // let pull-up settle before sampling
     esp_deep_sleep_start();  // never returns
 }
