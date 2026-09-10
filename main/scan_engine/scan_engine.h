@@ -20,7 +20,7 @@ typedef enum {
 
 static constexpr char SSP_RSSI_TIER_CHAR[] = {'S', 'M', 'W', 'X'};
 
-#define RSSI_HISTORY_LEN 32
+#define RSSI_HISTORY_LEN 64  // 64 samples x 5 s scan cadence = ~5.3 min window
 
 // One scan observation. Posted to scan_queue (depth 16) per AP per cycle.
 // Band is implicit: channel <= 14 is 2.4 GHz, anything above is 5 GHz.
