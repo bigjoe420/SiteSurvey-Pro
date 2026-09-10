@@ -132,13 +132,12 @@ static void settings_btn_cb(lv_event_t*)
 // ---------------------------------------------------------------------------
 
 static lv_obj_t* make_block(lv_obj_t* parent, const char* label_text,
-                            lv_color_t bg, lv_event_cb_t cb, int x, int y)
+                            lv_color_t bg, lv_event_cb_t cb, int x, int y, int w)
 {
-    const int W = 144;
     const int H = 44;
 
     lv_obj_t* btn = lv_btn_create(parent);
-    lv_obj_set_size(btn, W, H);
+    lv_obj_set_size(btn, w, H);
     lv_obj_set_pos(btn, x, y);
     lv_obj_set_style_bg_color(btn, bg, 0);
     lv_obj_set_style_radius(btn, 6, 0);
@@ -176,13 +175,13 @@ lv_obj_t* ui_home_create(void)
     const int Y2 = 128;   // 76 + 44 + 8
     const int Y3 = 180;   // 128 + 44 + 8
 
-    make_block(s_home, "Wi-Fi",        lv_color_hex(0x4CAF50), wifi_btn_cb,     X0, Y0);
-    make_block(s_home, "BLE",          lv_color_hex(0x00BCD4), ble_btn_cb,      X1, Y0);
-    make_block(s_home, "SPECTRUM",     lv_color_hex(0xFF9800), spectrum_btn_cb, X0, Y1);
-    make_block(s_home, "ENVIRONMENT",  lv_color_hex(0x2196F3), env_btn_cb,      X1, Y1);
-    make_block(s_home, "GPS",          lv_color_hex(0x9C27B0), gps_btn_cb,      X0, Y2);
-    make_block(s_home, "ALERTS",       lv_color_hex(0xF44336), alerts_btn_cb,   X1, Y2);
-    make_block(s_home, "SETTINGS",     lv_color_hex(0x607D8B), settings_btn_cb, X0, Y3);
+    make_block(s_home, "Wi-Fi",        lv_color_hex(0x4CAF50), wifi_btn_cb,     X0, Y0, 144);
+    make_block(s_home, "BLE",          lv_color_hex(0x00BCD4), ble_btn_cb,      X1, Y0, 144);
+    make_block(s_home, "SPECTRUM",     lv_color_hex(0xFF9800), spectrum_btn_cb, X0, Y1, 144);
+    make_block(s_home, "ENVIRONMENT",  lv_color_hex(0x2196F3), env_btn_cb,      X1, Y1, 144);
+    make_block(s_home, "GPS",          lv_color_hex(0x9C27B0), gps_btn_cb,      X0, Y2, 144);
+    make_block(s_home, "ALERTS",       lv_color_hex(0xF44336), alerts_btn_cb,   X1, Y2, 144);
+    make_block(s_home, "SETTINGS",     lv_color_hex(0x607D8B), settings_btn_cb, X0, Y3, 304);
 
     return s_home;
 }
