@@ -668,8 +668,7 @@ lv_obj_t* ui_settings_create(void)
         lv_obj_set_scroll_dir(s_panel, LV_DIR_VER);
         lv_obj_set_scrollbar_mode(s_panel, LV_SCROLLBAR_MODE_OFF);
         lv_obj_set_scroll_snap_y(s_panel, LV_SCROLL_SNAP_NONE);
-                lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_add_flag(s_panel, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
     }
 
     int y = 0;
@@ -691,7 +690,6 @@ lv_obj_t* ui_settings_create(void)
         if (s_switch_enabled) {
             lv_obj_set_size(s_switch_enabled, 44, 22);
             lv_obj_set_pos(s_switch_enabled, 260, y + 4);
-            lv_obj_add_flag(s_switch_enabled, LV_OBJ_FLAG_PRESS_LOCK);
             lv_obj_add_event_cb(s_switch_enabled, toggle_cb, LV_EVENT_VALUE_CHANGED, nullptr);
         }
         y += ROW_H + GAP;
@@ -724,7 +722,7 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_style_bg_color(btn_minus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_minus, 2, 0);
             lv_obj_add_event_cb(btn_minus, rssi_minus_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(btn_minus, 8);
+            lv_obj_set_ext_click_area(btn_minus, 2);
             lv_obj_t* lbl_minus = lv_label_create(btn_minus);
             if (lbl_minus) {
                 lv_label_set_text(lbl_minus, "-");
@@ -739,7 +737,7 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_style_bg_color(btn_plus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_plus, 2, 0);
             lv_obj_add_event_cb(btn_plus, rssi_plus_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(btn_plus, 8);
+            lv_obj_set_ext_click_area(btn_plus, 2);
             lv_obj_t* lbl_plus = lv_label_create(btn_plus);
             if (lbl_plus) {
                 lv_label_set_text(lbl_plus, "+");
@@ -846,7 +844,6 @@ lv_obj_t* ui_settings_create(void)
         if (s_switch_band2) {
             lv_obj_set_size(s_switch_band2, 44, 22);
             lv_obj_set_pos(s_switch_band2, 260, y + 4);
-            lv_obj_add_flag(s_switch_band2, LV_OBJ_FLAG_PRESS_LOCK);
             lv_obj_add_event_cb(s_switch_band2, band2_toggle_cb, LV_EVENT_VALUE_CHANGED, nullptr);
         }
         y += ROW_H + GAP;
@@ -863,7 +860,6 @@ lv_obj_t* ui_settings_create(void)
         if (s_switch_band5) {
             lv_obj_set_size(s_switch_band5, 44, 22);
             lv_obj_set_pos(s_switch_band5, 260, y + 4);
-            lv_obj_add_flag(s_switch_band5, LV_OBJ_FLAG_PRESS_LOCK);
             lv_obj_add_event_cb(s_switch_band5, band5_toggle_cb, LV_EVENT_VALUE_CHANGED, nullptr);
         }
         y += ROW_H + GAP;
@@ -889,7 +885,7 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_style_bg_color(btn_fminus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_fminus, 2, 0);
             lv_obj_add_event_cb(btn_fminus, filter_rssi_minus_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(btn_fminus, 8);
+            lv_obj_set_ext_click_area(btn_fminus, 2);
             lv_obj_t* lbl_fminus = lv_label_create(btn_fminus);
             if (lbl_fminus) { lv_label_set_text(lbl_fminus, "-"); lv_obj_center(lbl_fminus); }
         }
@@ -900,7 +896,7 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_style_bg_color(btn_fplus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_fplus, 2, 0);
             lv_obj_add_event_cb(btn_fplus, filter_rssi_plus_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(btn_fplus, 8);
+            lv_obj_set_ext_click_area(btn_fplus, 2);
             lv_obj_t* lbl_fplus = lv_label_create(btn_fplus);
             if (lbl_fplus) { lv_label_set_text(lbl_fplus, "+"); lv_obj_center(lbl_fplus); }
         }
@@ -973,7 +969,7 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_style_bg_color(btn_to_minus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_to_minus, 2, 0);
             lv_obj_add_event_cb(btn_to_minus, timeout_minus_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(btn_to_minus, 8);
+            lv_obj_set_ext_click_area(btn_to_minus, 2);
             lv_obj_t* lbl_to_minus = lv_label_create(btn_to_minus);
             if (lbl_to_minus) {
                 lv_label_set_text(lbl_to_minus, "-");
@@ -988,7 +984,7 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_style_bg_color(btn_to_plus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_to_plus, 2, 0);
             lv_obj_add_event_cb(btn_to_plus, timeout_plus_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(btn_to_plus, 8);
+            lv_obj_set_ext_click_area(btn_to_plus, 2);
             lv_obj_t* lbl_to_plus = lv_label_create(btn_to_plus);
             if (lbl_to_plus) {
                 lv_label_set_text(lbl_to_plus, "+");
@@ -1020,7 +1016,7 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_style_bg_color(btn_dim_minus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_dim_minus, 2, 0);
             lv_obj_add_event_cb(btn_dim_minus, dim_minus_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(btn_dim_minus, 8);
+            lv_obj_set_ext_click_area(btn_dim_minus, 2);
             lv_obj_t* lbl_dim_minus = lv_label_create(btn_dim_minus);
             if (lbl_dim_minus) {
                 lv_label_set_text(lbl_dim_minus, "-");
@@ -1035,7 +1031,7 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_style_bg_color(btn_dim_plus, lv_color_hex(0x333333), 0);
             lv_obj_set_style_radius(btn_dim_plus, 2, 0);
             lv_obj_add_event_cb(btn_dim_plus, dim_plus_cb, LV_EVENT_CLICKED, nullptr);
-            lv_obj_set_ext_click_area(btn_dim_plus, 8);
+            lv_obj_set_ext_click_area(btn_dim_plus, 2);
             lv_obj_t* lbl_dim_plus = lv_label_create(btn_dim_plus);
             if (lbl_dim_plus) {
                 lv_label_set_text(lbl_dim_plus, "+");
@@ -1057,7 +1053,6 @@ lv_obj_t* ui_settings_create(void)
         if (s_switch_sleep) {
             lv_obj_set_size(s_switch_sleep, 44, 22);
             lv_obj_set_pos(s_switch_sleep, 260, y + 4);
-            lv_obj_add_flag(s_switch_sleep, LV_OBJ_FLAG_PRESS_LOCK);
             lv_obj_add_event_cb(s_switch_sleep, sleep_toggle_cb, LV_EVENT_VALUE_CHANGED, nullptr);
         }
         y += ROW_H + SECTION_GAP;
@@ -1092,7 +1087,7 @@ lv_obj_t* ui_settings_create(void)
         lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
         lv_obj_set_style_radius(back, 3, 0);
         lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
-        lv_obj_set_ext_click_area(back, 16);
+        lv_obj_set_ext_click_area(back, 4);
 
         lv_obj_t* back_lbl = lv_label_create(back);
         if (back_lbl) {
@@ -1323,6 +1318,12 @@ void ui_settings_set_visible(bool visible)
         refresh_bssid_list();
         refresh_power_labels();
         refresh_filter_labels();
+
+        // Reset scroll state for smooth entry
+        if (s_panel) {
+            lv_obj_update_layout(s_panel);
+            lv_obj_scroll_to_y(s_panel, 0, LV_ANIM_OFF);
+        }
     } else {
         // Ensure modal is hidden when leaving Settings so keyboard state
         // doesn't leak across screen transitions.
@@ -1340,3 +1341,4 @@ void ui_settings_set_visible(bool visible)
         }
     }
 }
+
