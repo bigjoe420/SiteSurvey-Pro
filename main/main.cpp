@@ -209,6 +209,9 @@ extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "SiteSurvey Pro booting...");
     ESP_LOGI(TAG, "Target: ESP32-C5 | Flash: 16MB | PSRAM: 8MB");
+    if (esp_reset_reason() == ESP_RST_DEEPSLEEP) {
+        ESP_LOGI(TAG, "woke from deep sleep (BOOT button)");
+    }
 
     log_dma_heap("boot start");
 

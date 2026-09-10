@@ -6,7 +6,9 @@
 #include "esp_log.h"
 #include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "freertos/timers.h"
+#include "esp_sleep.h"
 #include "nvs_flash.h"
 #include "nvs.h"
 
@@ -206,4 +208,19 @@ void power_mgr_set_sleep_en(bool en)
 {
     s_sleep_en = en;
     nvs_save();
+}
+
+void power_mgr_power_off(void)
+{
+    ESP_LOGI(TAG, "power off: backlight off, entering deep sleep (press BOOT to wake)");
+    ledc_set_duty(PM_LEDC_MODE, PM_LEDC_CHANNEL, 0);
+    ledc_update_duty(PM_LEDC_MODE, PM_LEDC_CHANNEL);
+    s_bl_state = SSP_PM_BL_OFF;
+    // let the log line flush before the UART goes quiet
+    vTaskDelay(pdMS_TO_TICKS(150));
+    // GPIO0 is RTC-capable on ESP32-C5 (RTCIO channel 0) -> EXT1 deep-sleep
+    // wakeup; BOOT button pulls it low. Needs the internal pull-up (default
+    // RTC_PERIPH domain config) or an external resistor.
+    esp_sleep_enable_ext1_wakeup_io(1ULL << SSP_WAKE_PIN, ESP_EXT1_WAKEUP_ANY_LOW);
+    esp_deep_sleep_start();  // never returns
 }
