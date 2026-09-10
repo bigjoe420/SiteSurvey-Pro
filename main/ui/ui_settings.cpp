@@ -7,6 +7,12 @@
 #include <cstdlib>
 #include "esp_log.h"
 #include "ui_home.h"
+#include "ota_update.h"
+#include "esp_heap_caps.h"
+#include "esp_app_desc.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/idf_additions.h"
 #include "scan_engine.h"
 
 static bool s_visible;
@@ -55,6 +61,20 @@ static lv_obj_t* s_pick_empty;
 static lv_obj_t* s_pick_title;
 static char s_pick_ssids[16][33];
 static int s_pick_count;
+
+// Firmware update UI
+static lv_obj_t* s_lbl_version;
+static lv_obj_t* s_ota_modal;
+static lv_obj_t* s_ota_title;
+static lv_obj_t* s_ota_list;
+static lv_obj_t* s_ota_status;
+static lv_obj_t* s_ota_bar;
+static lv_obj_t* s_ota_btn_flash;
+static lv_obj_t* s_ota_btn_cancel;
+static OtaFile_t s_ota_files[8];
+static int  s_ota_count;
+static int  s_ota_sel;        // selected file index for confirm state
+static bool s_ota_flashing;   // re-entry guard while a flash is running
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -571,6 +591,196 @@ static void clear_log_cb(lv_event_t*)
 }
 
 // ---------------------------------------------------------------------------
+// Firmware update (SD card -> OTA partition)
+// ---------------------------------------------------------------------------
+
+enum { OTA_STATE_PICK = 0, OTA_STATE_CONFIRM = 1, OTA_STATE_FLASH = 2 };
+
+static void ota_ui_state(int state)
+{
+    if (!s_ota_modal) return;
+    lv_obj_set_style_text_color(s_ota_status, lv_color_hex(0xE8E8E8), 0);
+    switch (state) {
+    case OTA_STATE_PICK:
+        lv_label_set_text(s_ota_title, "Firmware files on SD");
+        lv_obj_remove_flag(s_ota_list, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_ota_status, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_ota_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_ota_btn_flash, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(s_ota_btn_cancel, LV_OBJ_FLAG_HIDDEN);
+        break;
+    case OTA_STATE_CONFIRM:
+        lv_label_set_text(s_ota_title, "Flash this file?");
+        lv_obj_add_flag(s_ota_list, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(s_ota_status, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_ota_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(s_ota_btn_flash, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(s_ota_btn_cancel, LV_OBJ_FLAG_HIDDEN);
+        break;
+    case OTA_STATE_FLASH:
+        lv_label_set_text(s_ota_title, "Flashing - do not power off");
+        lv_obj_add_flag(s_ota_list, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(s_ota_status, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(s_ota_bar, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_ota_btn_flash, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(s_ota_btn_cancel, LV_OBJ_FLAG_HIDDEN);
+        break;
+    }
+}
+
+static void ota_build_file_list(void);
+
+static void ota_cancel_cb(lv_event_t*)
+{
+    if (s_ota_flashing) return;  // no way out mid-flash (deliberate)
+    lv_obj_add_flag(s_ota_modal, LV_OBJ_FLAG_HIDDEN);
+    if (s_panel) lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+static void ota_pick_file_cb(lv_event_t* e)
+{
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx >= s_ota_count) return;
+    s_ota_sel = idx;
+    char buf[128];
+    snprintf(buf, sizeof(buf), "%s\n%.1f MB - replaces current firmware",
+             s_ota_files[idx].name, s_ota_files[idx].size / 1048576.0f);
+    lv_label_set_text(s_ota_status, buf);
+    ota_ui_state(OTA_STATE_CONFIRM);
+}
+
+// Runs on the LVGL task via lv_async_call (flash task context is unsafe for LVGL)
+static void ota_progress_async(void* user_data)
+{
+    int pct = *(int*)user_data;
+    free(user_data);
+    if (s_ota_bar) lv_bar_set_value(s_ota_bar, pct, LV_ANIM_OFF);
+    if (s_ota_status) {
+        char buf[40];
+        snprintf(buf, sizeof(buf), "Writing firmware... %d%%", pct);
+        lv_label_set_text(s_ota_status, buf);
+    }
+}
+
+static void ota_fail_async(void* user_data)
+{
+    char* msg = (char*)user_data;
+    s_ota_flashing = false;
+    s_ota_sel = -1;
+    if (s_ota_title) lv_label_set_text(s_ota_title, "Firmware files on SD");
+    if (s_ota_status) {
+        lv_label_set_text(s_ota_status, msg ? msg : "Flash failed");
+        lv_obj_set_style_text_color(s_ota_status, lv_color_hex(0xEF5350), 0);
+    }
+    if (msg) free(msg);
+    if (s_ota_bar) lv_obj_add_flag(s_ota_bar, LV_OBJ_FLAG_HIDDEN);
+    if (s_ota_list) lv_obj_remove_flag(s_ota_list, LV_OBJ_FLAG_HIDDEN);
+    if (s_ota_btn_cancel) lv_obj_remove_flag(s_ota_btn_cancel, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void ota_progress_tramp(int pct, void*)
+{
+    int* p = (int*)malloc(sizeof(int));
+    if (!p) return;
+    *p = pct;
+    lv_async_call(ota_progress_async, p);
+}
+
+struct OtaFlashArgs { char path[112]; };
+static OtaFlashArgs s_ota_args;  // one-shot per boot; re-entry guarded by s_ota_flashing
+
+static void ota_flash_task(void* arg)
+{
+    OtaFlashArgs* a = (OtaFlashArgs*)arg;
+    esp_err_t err = ota_update_flash(a->path, ota_progress_tramp, nullptr);
+    // Failure path only - success restarts the device into the new firmware
+    char* msg = (char*)malloc(64);
+    if (msg) snprintf(msg, 64, "Flash error: %s", esp_err_to_name(err));
+    lv_async_call(ota_fail_async, msg);
+    vTaskDelete(nullptr);
+}
+
+static void ota_flash_cb(lv_event_t*)
+{
+    if (s_ota_flashing || s_ota_sel < 0 || s_ota_sel >= s_ota_count) return;
+    s_ota_flashing = true;
+    snprintf(s_ota_args.path, sizeof(s_ota_args.path), "/sdcard/%s", s_ota_files[s_ota_sel].name);
+    ota_ui_state(OTA_STATE_FLASH);
+    lv_bar_set_value(s_ota_bar, 0, LV_ANIM_OFF);
+    lv_label_set_text(s_ota_status, "Writing firmware... 0%");
+    BaseType_t ok = xTaskCreateWithCaps(ota_flash_task, "ota_flash", 6144, &s_ota_args,
+                                        5, nullptr, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (ok != pdPASS) {
+        s_ota_flashing = false;
+        char* msg = (char*)malloc(48);
+        if (msg) strcpy(msg, "Could not start flash task");
+        lv_async_call(ota_fail_async, msg);
+    }
+}
+
+static void ota_open_cb(lv_event_t*)
+{
+    if (!s_ota_modal || s_ota_flashing) return;
+    s_ota_sel = -1;
+    ota_build_file_list();
+    ota_ui_state(OTA_STATE_PICK);
+    if (s_ota_count == 0) {
+        lv_label_set_text(s_ota_status, "No .bin files on SD card\nCopy SiteSurvey-Pro.bin to SD root");
+        lv_obj_remove_flag(s_ota_status, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (s_modal) lv_obj_add_flag(s_modal, LV_OBJ_FLAG_HIDDEN);
+    if (s_pick_modal) lv_obj_add_flag(s_pick_modal, LV_OBJ_FLAG_HIDDEN);
+    if (s_panel) lv_obj_remove_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(s_ota_modal, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void ota_build_file_list(void)
+{
+    if (!s_ota_list) return;
+    lv_obj_clean(s_ota_list);
+    lv_obj_scroll_to_y(s_ota_list, 0, LV_ANIM_OFF);
+    s_ota_count = ota_update_scan(s_ota_files, 8);
+
+    for (int i = 0; i < s_ota_count; i++) {
+        lv_obj_t* row = lv_obj_create(s_ota_list);
+        if (!row) continue;
+        lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_size(row, 304, 28);
+        lv_obj_set_pos(row, 0, i * 28);
+        lv_obj_set_style_bg_color(row, lv_color_hex(0x1A1A1A), 0);
+        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_pad_all(row, 2, 0);
+
+        lv_obj_t* lbl = lv_label_create(row);
+        if (lbl) {
+            char buf[80];
+            snprintf(buf, sizeof(buf), "%s  %.1f MB",
+                     s_ota_files[i].name, s_ota_files[i].size / 1048576.0f);
+            lv_label_set_text(lbl, buf);
+            lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(lbl, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_pos(lbl, 4, 4);
+        }
+
+        lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(row, LV_OBJ_FLAG_PRESS_LOCK);
+        lv_obj_add_event_cb(row, ota_pick_file_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
+    }
+
+    // Cap visible rows at 4; scroll within the modal if more
+    int list_h = s_ota_count * 28;
+    if (list_h < 28) list_h = 28;
+    if (list_h > 112) list_h = 112;
+    lv_obj_set_height(s_ota_list, list_h);
+    if (s_ota_count <= 4) {
+        lv_obj_remove_flag(s_ota_list, LV_OBJ_FLAG_SCROLLABLE);
+    } else {
+        lv_obj_add_flag(s_ota_list, LV_OBJ_FLAG_SCROLLABLE);
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Row builders
 // ---------------------------------------------------------------------------
 
@@ -1065,6 +1275,46 @@ lv_obj_t* ui_settings_create(void)
         y += ROW_H + SECTION_GAP;
     }
 
+    // --- Firmware ---
+    if (s_panel) {
+        lv_obj_t* lbl_fw = lv_label_create(s_panel);
+        if (lbl_fw) {
+            lv_label_set_text(lbl_fw, "Firmware");
+            lv_obj_set_style_text_font(lbl_fw, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(lbl_fw, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_pos(lbl_fw, 8, y + 6);
+        }
+        y += ROW_H + GAP;
+
+        s_lbl_version = lv_label_create(s_panel);
+        if (s_lbl_version) {
+            const esp_app_desc_t* d = esp_app_get_description();
+            char buf[48];
+            snprintf(buf, sizeof(buf), "v%s", d ? d->version : "?");
+            lv_label_set_text(s_lbl_version, buf);
+            lv_obj_set_style_text_font(s_lbl_version, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_lbl_version, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_pos(s_lbl_version, 8, y + 6);
+        }
+
+        lv_obj_t* btn_ota = lv_btn_create(s_panel);
+        if (btn_ota) {
+            lv_obj_set_size(btn_ota, 140, 24);
+            lv_obj_set_pos(btn_ota, 176, y + 3);
+            lv_obj_set_style_bg_color(btn_ota, lv_color_hex(0x2E7D32), 0);
+            lv_obj_set_style_radius(btn_ota, 2, 0);
+            lv_obj_add_event_cb(btn_ota, ota_open_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_t* lbl_ota = lv_label_create(btn_ota);
+            if (lbl_ota) {
+                lv_label_set_text(lbl_ota, "Update from SD");
+                lv_obj_set_style_text_font(lbl_ota, &lv_font_montserrat_14, 0);
+                lv_obj_set_style_text_color(lbl_ota, lv_color_white(), 0);
+                lv_obj_center(lbl_ota);
+            }
+        }
+        y += ROW_H + SECTION_GAP;
+    }
+
     // --- Clear Alert Log ---
     if (s_panel) {
         lv_obj_t* btn_clear = lv_btn_create(s_panel);
@@ -1285,6 +1535,92 @@ lv_obj_t* ui_settings_create(void)
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Firmware update modal (created LAST so it blocks everything when visible)
+    // -----------------------------------------------------------------------
+    s_ota_modal = lv_obj_create(s_scr);
+    if (s_ota_modal) {
+        lv_obj_set_size(s_ota_modal, 320, 240);
+        lv_obj_set_pos(s_ota_modal, 0, 0);
+        lv_obj_set_style_bg_color(s_ota_modal, lv_color_hex(0x000000), 0);
+        lv_obj_set_style_bg_opa(s_ota_modal, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(s_ota_modal, 0, 0);
+        lv_obj_set_style_pad_all(s_ota_modal, 0, 0);
+        lv_obj_add_flag(s_ota_modal, LV_OBJ_FLAG_CLICKABLE);  // block pass-through
+        lv_obj_remove_flag(s_ota_modal, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(s_ota_modal, LV_OBJ_FLAG_HIDDEN);
+
+        s_ota_title = lv_label_create(s_ota_modal);
+        if (s_ota_title) {
+            lv_label_set_text(s_ota_title, "Firmware files on SD");
+            lv_obj_set_style_text_font(s_ota_title, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_ota_title, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_align(s_ota_title, LV_ALIGN_TOP_MID, 0, 8);
+        }
+
+        s_ota_list = lv_obj_create(s_ota_modal);
+        if (s_ota_list) {
+            lv_obj_set_size(s_ota_list, 320, 112);
+            lv_obj_set_pos(s_ota_list, 0, 30);
+            lv_obj_set_style_bg_opa(s_ota_list, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(s_ota_list, 0, 0);
+            lv_obj_set_scroll_dir(s_ota_list, LV_DIR_VER);
+            lv_obj_set_scrollbar_mode(s_ota_list, LV_SCROLLBAR_MODE_OFF);
+        }
+
+        s_ota_status = lv_label_create(s_ota_modal);
+        if (s_ota_status) {
+            lv_obj_set_width(s_ota_status, 280);
+            lv_label_set_long_mode(s_ota_status, LV_LABEL_LONG_WRAP);
+            lv_obj_set_style_text_font(s_ota_status, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_ota_status, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_style_text_align(s_ota_status, LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_set_pos(s_ota_status, 20, 118);
+        }
+
+        s_ota_bar = lv_bar_create(s_ota_modal);
+        if (s_ota_bar) {
+            lv_obj_set_size(s_ota_bar, 280, 14);
+            lv_obj_set_pos(s_ota_bar, 20, 150);
+            lv_bar_set_range(s_ota_bar, 0, 100);
+            lv_obj_set_style_bg_color(s_ota_bar, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_opa(s_ota_bar, LV_OPA_COVER, 0);
+            lv_obj_set_style_bg_color(s_ota_bar, lv_color_hex(0x2E7D32), LV_PART_INDICATOR);
+        }
+
+        s_ota_btn_flash = lv_btn_create(s_ota_modal);
+        if (s_ota_btn_flash) {
+            lv_obj_set_size(s_ota_btn_flash, 130, 28);
+            lv_obj_set_pos(s_ota_btn_flash, 20, 200);
+            lv_obj_set_style_bg_color(s_ota_btn_flash, lv_color_hex(0x2E7D32), 0);
+            lv_obj_set_style_radius(s_ota_btn_flash, 2, 0);
+            lv_obj_add_event_cb(s_ota_btn_flash, ota_flash_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_t* lbl_flash = lv_label_create(s_ota_btn_flash);
+            if (lbl_flash) {
+                lv_label_set_text(lbl_flash, "Flash");
+                lv_obj_set_style_text_font(lbl_flash, &lv_font_montserrat_14, 0);
+                lv_obj_set_style_text_color(lbl_flash, lv_color_white(), 0);
+                lv_obj_center(lbl_flash);
+            }
+        }
+
+        s_ota_btn_cancel = lv_btn_create(s_ota_modal);
+        if (s_ota_btn_cancel) {
+            lv_obj_set_size(s_ota_btn_cancel, 130, 28);
+            lv_obj_set_pos(s_ota_btn_cancel, 170, 200);
+            lv_obj_set_style_bg_color(s_ota_btn_cancel, lv_color_hex(0xB71C1C), 0);
+            lv_obj_set_style_radius(s_ota_btn_cancel, 2, 0);
+            lv_obj_add_event_cb(s_ota_btn_cancel, ota_cancel_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_t* lbl_ocancel = lv_label_create(s_ota_btn_cancel);
+            if (lbl_ocancel) {
+                lv_label_set_text(lbl_ocancel, "Cancel");
+                lv_obj_set_style_text_font(lbl_ocancel, &lv_font_montserrat_14, 0);
+                lv_obj_set_style_text_color(lbl_ocancel, lv_color_white(), 0);
+                lv_obj_center(lbl_ocancel);
+            }
+        }
+    }
+
     // Load current config
     const AlertConfig_t* cfg = alert_config_get();
     s_cfg = *cfg;
@@ -1345,6 +1681,9 @@ void ui_settings_set_visible(bool visible)
         }
         if (s_pick_modal) {
             lv_obj_add_flag(s_pick_modal, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (s_ota_modal) {
+            lv_obj_add_flag(s_ota_modal, LV_OBJ_FLAG_HIDDEN);
         }
         if (s_panel) {
             lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
