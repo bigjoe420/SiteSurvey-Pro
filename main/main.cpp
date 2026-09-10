@@ -10,6 +10,7 @@
 #include "freertos/queue.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "esp_heap_caps.h"
 #include "nvs_flash.h"
 #include "driver/gpio.h"
 
@@ -31,6 +32,21 @@
 #include "power_mgr.h"
 
 static const char* TAG = "SiteSurvey";
+
+// ---------------------------------------------------------------------------
+// DMA heap diagnostics — pinpoints who eats DMA-capable internal RAM
+// ---------------------------------------------------------------------------
+static void log_dma_heap(const char* where)
+{
+    size_t dma_free     = heap_caps_get_free_size(MALLOC_CAP_DMA);
+    size_t dma_largest  = heap_caps_get_largest_free_block(MALLOC_CAP_DMA);
+    size_t total_free   = esp_get_free_heap_size();
+    ESP_LOGI(TAG, "[DMA] %-22s free=%6u  largest=%6u  total=%6u",
+             where,
+             (unsigned)dma_free,
+             (unsigned)dma_largest,
+             (unsigned)total_free);
+}
 
 // ---------------------------------------------------------------------------
 // Board Initialization
@@ -71,6 +87,8 @@ static void late_init_task(void*)
     // Give the splash one full frame (10 ms) before init hogs flash/SPI bus
     vTaskDelay(pdMS_TO_TICKS(10));
 
+    log_dma_heap("before sd_card_init");
+
     // SD init FIRST — before WiFi/BLE consume DMA-capable internal RAM.
     // With psram_dma_direct=1 the display DMAs from PSRAM, but SDSPI still
     // needs small internal DMA buffers for CMD/response transactions. Once
@@ -80,12 +98,22 @@ static void late_init_task(void*)
     if (sd_err == ESP_OK) {
         session_logger_init();
     }
+    log_dma_heap("after sd_card_init");
 
     ESP_ERROR_CHECK(scan_engine_init());
+    log_dma_heap("after scan_engine_init");
+
     ESP_ERROR_CHECK(sensors_init());
+    log_dma_heap("after sensors_init");
+
     ESP_ERROR_CHECK(ble_scan_init());
+    log_dma_heap("after ble_scan_init");
+
     ESP_ERROR_CHECK(alert_engine_init());
+    log_dma_heap("after alert_engine_init");
+
     ESP_ERROR_CHECK(led_rgb_init());
+    log_dma_heap("after led_rgb_init");
 
     // Build queue set and add ALL queues BEFORE any task can post.
     // xQueueAddToSet() fails (pdFAIL) if the queue already holds data.
@@ -103,6 +131,7 @@ static void late_init_task(void*)
     scan_engine_start_task();
     sensors_start_task();
     ble_scan_start_task();
+    log_dma_heap("after all tasks started");
 
     // Latest GPS state cached for session logging (updated every 5 s).
     GpsState latest_gps = {};
@@ -181,8 +210,11 @@ extern "C" void app_main(void)
     ESP_LOGI(TAG, "SiteSurvey Pro booting...");
     ESP_LOGI(TAG, "Target: ESP32-C5 | Flash: 16MB | PSRAM: 8MB");
 
+    log_dma_heap("boot start");
+
     // GPIO first: clamps backlight LOW and parks all SPI CS lines HIGH
     board_init_gpio();
+    log_dma_heap("after gpio");
 
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -190,10 +222,16 @@ extern "C" void app_main(void)
         ret = nvs_flash_init();
     }
     ESP_ERROR_CHECK(ret);
+    log_dma_heap("after nvs");
 
     ESP_ERROR_CHECK(lvgl_port_init());
+    log_dma_heap("after lvgl_port_init");
+
     ESP_ERROR_CHECK(power_mgr_init());
+    log_dma_heap("after power_mgr_init");
+
     scan_filter_init();
+    log_dma_heap("after scan_filter_init");
 
     // Splash owns the display first. Home screen is deferred via callback
     // until splash gates clear — preventing ~100+ widget objects + 25KB PSRAM
@@ -201,9 +239,10 @@ extern "C" void app_main(void)
     ui_splash_show([]() -> lv_obj_t* { return ui_home_create(); });
     lvgl_port_start_ui_task();
 
+    log_dma_heap("after ui_task start");
     ESP_LOGI(TAG, "UI pipeline up - free heap: %lu bytes", esp_get_free_heap_size());
 
     // Spin heavy init into a background task at prio 1.  ui_task (prio 24)
     // will always preempt it, so the splash animation never stalls.
-    xTaskCreate(late_init_task, "late_init", 6144, nullptr, 1, nullptr);
+    xTaskCreateWithCaps(late_init_task, "late_init", 6144, nullptr, 1, nullptr, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 }
