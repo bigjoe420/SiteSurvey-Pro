@@ -630,6 +630,12 @@ static void ota_ui_state(int state)
 
 static void ota_build_file_list(void);
 
+static bool ota_is_current(const char* version)
+{
+    const esp_app_desc_t* d = esp_app_get_description();
+    return d && version[0] && strcmp(version, d->version) == 0;
+}
+
 static void ota_cancel_cb(lv_event_t*)
 {
     if (s_ota_flashing) return;  // no way out mid-flash (deliberate)
@@ -642,11 +648,15 @@ static void ota_pick_file_cb(lv_event_t* e)
     int idx = (int)(intptr_t)lv_event_get_user_data(e);
     if (idx < 0 || idx >= s_ota_count) return;
     s_ota_sel = idx;
-    char buf[128];
-    snprintf(buf, sizeof(buf), "%s\n%.1f MB - replaces current firmware",
-             s_ota_files[idx].name, s_ota_files[idx].size / 1048576.0f);
+    bool same = ota_is_current(s_ota_files[idx].version);
+    char buf[160];
+    snprintf(buf, sizeof(buf), "%s\nv%s  %.1f MB%s",
+             s_ota_files[idx].name, s_ota_files[idx].version,
+             s_ota_files[idx].size / 1048576.0f,
+             same ? "\nSame version as running firmware" : "");
     lv_label_set_text(s_ota_status, buf);
     ota_ui_state(OTA_STATE_CONFIRM);
+    if (same) lv_obj_set_style_text_color(s_ota_status, lv_color_hex(0xFFB300), 0);
 }
 
 // Runs on the LVGL task via lv_async_call (flash task context is unsafe for LVGL)
@@ -754,12 +764,16 @@ static void ota_build_file_list(void)
 
         lv_obj_t* lbl = lv_label_create(row);
         if (lbl) {
-            char buf[80];
-            snprintf(buf, sizeof(buf), "%s  %.1f MB",
-                     s_ota_files[i].name, s_ota_files[i].size / 1048576.0f);
+            char buf[112];
+            snprintf(buf, sizeof(buf), "%s  v%s  %.1f MB",
+                     s_ota_files[i].name, s_ota_files[i].version,
+                     s_ota_files[i].size / 1048576.0f);
             lv_label_set_text(lbl, buf);
             lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl, lv_color_hex(0xE8E8E8), 0);
+            // Dim rows that carry the same version as the running firmware
+            lv_obj_set_style_text_color(lbl, ota_is_current(s_ota_files[i].version)
+                                           ? lv_color_hex(0x757575)
+                                           : lv_color_hex(0xE8E8E8), 0);
             lv_obj_set_pos(lbl, 4, 4);
         }
 

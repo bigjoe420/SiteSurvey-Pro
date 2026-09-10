@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "esp_ota_ops.h"
 #include "esp_app_format.h"
+#include "esp_app_desc.h"
 
 static const char* TAG = "ota";
 #define SD_ROOT "/sdcard"
@@ -27,6 +28,25 @@ static bool has_bin_suffix(const char* name)
            (ext[1] == 'b' || ext[1] == 'B') &&
            (ext[2] == 'i' || ext[2] == 'I') &&
            (ext[3] == 'n' || ext[3] == 'N');
+}
+
+// esp_app_desc_t lives at offset 0x20 of every app image. Returns true when a
+// valid descriptor was read; false leaves version as "?".
+static bool read_image_version(const char* path, char* version, size_t ver_len)
+{
+    strcpy(version, "?");
+    FILE* f = fopen(path, "rb");
+    if (!f) return false;
+    if (fseek(f, 0x20, SEEK_SET) != 0) { fclose(f); return false; }
+    esp_app_desc_t desc;
+    bool ok = fread(&desc, sizeof(desc), 1, f) == 1 &&
+              desc.magic_word == ESP_APP_DESC_MAGIC_WORD;
+    fclose(f);
+    if (ok) {
+        strncpy(version, desc.version, ver_len - 1);
+        version[ver_len - 1] = '\0';
+    }
+    return ok;
 }
 
 int ota_update_scan(OtaFile_t* out, int max)
@@ -57,7 +77,8 @@ int ota_update_scan(OtaFile_t* out, int max)
         strncpy(out[count].name, ent->d_name, sizeof(out[count].name) - 1);
         out[count].name[sizeof(out[count].name) - 1] = '\0';
         out[count].size = (uint32_t)st.st_size;
-        ESP_LOGI(TAG, "candidate: %s (%u bytes)", out[count].name, out[count].size);
+        read_image_version(path, out[count].version, sizeof(out[count].version));
+        ESP_LOGI(TAG, "candidate: %s (%u bytes, v%s)", out[count].name, out[count].size, out[count].version);
         count++;
     }
     closedir(dir);
