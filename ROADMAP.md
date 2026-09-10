@@ -85,7 +85,7 @@ Hardware verification and board support package (BSP) establishment completed.
 - [x] WS2812 RGB LED driver + alert hook — verified on-device 2026-09-04 (commit `e2be03b`)
 
 ### Phase 3: Polish & Hardening — 🟡 ACTIVE
-- [ ] On-device RSSI graphing (RSSI over time per AP) — top priority
+- [x] On-device RSSI graphing (RSSI over time per AP) — detail chart since 2026-09-04; upgraded 2026-09-10: 64-sample (~5 min) window, min/max/avg stats, grid + dBm corner labels, live tier color
 - [ ] Power management & battery life optimization
 - [ ] UI themes (outdoor high-contrast mode)
 - [x] Configurable scan filters (by RSSI threshold, SSID pattern, 2.4/5 GHz band) — verified on-device 2026-09-07
