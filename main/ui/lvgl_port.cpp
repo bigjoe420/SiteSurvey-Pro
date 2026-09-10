@@ -113,7 +113,13 @@ esp_err_t lvgl_port_init(void)
     void* buf2 = heap_caps_malloc(BUF_SIZE, MALLOC_CAP_SPIRAM);
     ESP_RETURN_ON_FALSE(buf1 && buf2, ESP_ERR_NO_MEM, TAG, "PSRAM buffer alloc failed");
 
+    size_t dma_before_lv = heap_caps_get_free_size(MALLOC_CAP_DMA);
     lv_init();
+    size_t dma_after_lv = heap_caps_get_free_size(MALLOC_CAP_DMA);
+    int dma_delta = (int)(dma_before_lv - dma_after_lv);
+    ESP_LOGI(TAG, "lv_init() DMA delta: %d bytes (pool %s internal RAM)",
+             dma_delta,
+             (dma_delta > 32768) ? "likely in" : "probably NOT in");
 
     /* Add a PSRAM-backed secondary pool to LVGL. The 64 KB internal pool can
      * be exhausted by heavy screens (Settings keyboard), causing lv_realloc to
@@ -166,5 +172,5 @@ void lvgl_port_start_ui_task(void)
     // Prio 24: above Wi-Fi driver (prio 23) so LVGL never gets preempted
     // during render. The task yields every 10 ms via vTaskDelay, giving
     // Wi-Fi enough CPU between frames.
-    xTaskCreate(ui_task, "ui_task", 12288, nullptr, 24, nullptr);
+    xTaskCreateWithCaps(ui_task, "ui_task", 12288, nullptr, 24, nullptr, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 }

@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include "esp_check.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "nimble/nimble_port.h"
 #include "nimble/nimble_port_freertos.h"
@@ -239,5 +240,5 @@ int ble_scan_snapshot(BleScanResult_t* out, int max)
 
 void ble_scan_start_task(void)
 {
-    xTaskCreate(ble_scan_task, "ble_scan_task", SCAN_TASK_STACK, nullptr, SCAN_TASK_PRIO, nullptr);
+    xTaskCreateWithCaps(ble_scan_task, "ble_scan_task", SCAN_TASK_STACK, nullptr, SCAN_TASK_PRIO, nullptr, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 }

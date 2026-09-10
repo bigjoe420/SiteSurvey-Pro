@@ -1,6 +1,7 @@
 #include "sensors.h"
 
 #include "esp_check.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_system.h"
 #include "driver/i2c_master.h"
@@ -128,5 +129,5 @@ bool sensors_bme680_present(void)
 
 void sensors_start_task(void)
 {
-    xTaskCreate(sensor_task, "sensor_task", SENSOR_TASK_STACK, nullptr, SENSOR_TASK_PRIO, nullptr);
+    xTaskCreateWithCaps(sensor_task, "sensor_task", SENSOR_TASK_STACK, nullptr, SENSOR_TASK_PRIO, nullptr, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 }

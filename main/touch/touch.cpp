@@ -3,6 +3,7 @@
 #include "board_pins.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -140,8 +141,9 @@ esp_err_t touch_start_sampler(void)
     // is issued the instant the shared SPI bus frees.  A sample window stalled
     // longer than a tap's press duration erases the tap entirely (no PRESSED,
     // no CLICKED), which is why sampling sits at the top of the ladder.
-    BaseType_t ok = xTaskCreate(sampler_task, "touch_sampler",
-                                2048, nullptr, 24, nullptr);
+    BaseType_t ok = xTaskCreateWithCaps(sampler_task, "touch_sampler",
+                                2048, nullptr, 24, nullptr,
+                                MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
     ESP_RETURN_ON_FALSE(ok == pdPASS, ESP_ERR_NO_MEM, TAG,
                         "sampler task create failed");
     ESP_LOGI(TAG, "touch sampler task running @ 50 Hz");

@@ -3,6 +3,7 @@
 #include <cstring>
 #include "esp_check.h"
 #include "esp_event.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_netif.h"
 #include "esp_system.h"
@@ -378,7 +379,7 @@ int scan_engine_snapshot(ScanResult_t* out, int max)
 
 void scan_engine_start_task(void)
 {
-    xTaskCreate(wifi_scan_task, "wifi_scan_task", SCAN_TASK_STACK, nullptr, SCAN_TASK_PRIO, nullptr);
+    xTaskCreateWithCaps(wifi_scan_task, "wifi_scan_task", SCAN_TASK_STACK, nullptr, SCAN_TASK_PRIO, nullptr, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
 }
 
 int scan_engine_get_history(const uint8_t bssid[6], int8_t* out_rssi, int max_samples)
