@@ -94,7 +94,6 @@ static void gps_btn_cb(lv_event_t*)
     ui_ble_set_visible(false);
     ui_env_set_visible(false);
     ui_spectrum_set_visible(false);
-    ui_gps_set_visible(false);
     ui_alerts_set_visible(false);
     ui_settings_set_visible(false);
 }
@@ -129,25 +128,47 @@ static void settings_btn_cb(lv_event_t*)
 }
 
 // ---------------------------------------------------------------------------
-// Block helper
+// Block helper — premium styling
 // ---------------------------------------------------------------------------
 
 static lv_obj_t* make_block(lv_obj_t* parent, const char* label_text,
-                            lv_color_t bg, lv_event_cb_t cb, int x, int y, int w)
+                            lv_color_t bg_top, lv_color_t bg_bot,
+                            lv_color_t press_top, lv_color_t press_bot,
+                            lv_event_cb_t cb, int x, int y, int w)
 {
     const int H = 44;
 
     lv_obj_t* btn = lv_btn_create(parent);
     lv_obj_set_size(btn, w, H);
     lv_obj_set_pos(btn, x, y);
-    lv_obj_set_style_bg_color(btn, bg, 0);
-    lv_obj_set_style_radius(btn, 6, 0);
+
+    // Normal state — vertical gradient
+    lv_obj_set_style_bg_color(btn, bg_top, 0);
+    lv_obj_set_style_bg_grad_color(btn, bg_bot, 0);
+    lv_obj_set_style_bg_grad_dir(btn, LV_GRAD_DIR_VER, 0);
+    lv_obj_set_style_bg_main_stop(btn, 0, 0);
+    lv_obj_set_style_bg_grad_stop(btn, 255, 0);
+    lv_obj_set_style_radius(btn, 8, 0);
     lv_obj_set_style_border_width(btn, 0, 0);
+
+    // Pressed state — darker flat gradient
+    lv_obj_set_style_bg_color(btn, press_top, LV_STATE_PRESSED);
+    lv_obj_set_style_bg_grad_color(btn, press_bot, LV_STATE_PRESSED);
+    lv_obj_set_style_bg_grad_dir(btn, LV_GRAD_DIR_VER, LV_STATE_PRESSED);
+
+    // Drop shadow for depth
+    lv_obj_set_style_shadow_color(btn, lv_color_black(), 0);
+    lv_obj_set_style_shadow_width(btn, 6, 0);
+    lv_obj_set_style_shadow_offset_x(btn, 0, 0);
+    lv_obj_set_style_shadow_offset_y(btn, 3, 0);
+    lv_obj_set_style_shadow_opa(btn, LV_OPA_30, 0);
+    lv_obj_set_style_shadow_spread(btn, 1, 0);
+
     lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, nullptr);
 
     lv_obj_t* lbl = lv_label_create(btn);
     lv_label_set_text(lbl, label_text);
-    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
     lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
     lv_obj_center(lbl);
 
@@ -160,29 +181,68 @@ lv_obj_t* ui_home_create(void)
     lv_obj_remove_flag(s_home, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(s_home, lv_color_black(), 0);
 
-    // Small title at top
+    // -----------------------------------------------------------------------
+    // Title — big, with cyan outline glow for that "3D pop"
+    // -----------------------------------------------------------------------
     lv_obj_t* title = lv_label_create(s_home);
     lv_label_set_text(title, "SiteSurvey Pro");
-    lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(title, lv_color_hex(0xB0B0B0), 0);
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 4);
+    lv_obj_set_style_text_font(title, &lv_font_montserrat_22, 0);
+    lv_obj_set_style_text_color(title, lv_color_white(), 0);
+    lv_obj_set_style_text_outline_stroke_color(title, lv_color_hex(0x00E5FF), 0);
+    lv_obj_set_style_text_outline_stroke_width(title, 2, 0);
+    lv_obj_set_style_text_outline_stroke_opa(title, LV_OPA_60, 0);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 6);
 
     // 2×4 block grid — 7 blocks + 1 empty.
     // Block size 144×44, gap 16 horizontal / 8 vertical, left margin 12.
     const int X0 = 12;
     const int X1 = 172;   // 12 + 144 + 16
-    const int Y0 = 24;
-    const int Y1 = 76;    // 24 + 44 + 8
-    const int Y2 = 128;   // 76 + 44 + 8
-    const int Y3 = 180;   // 128 + 44 + 8
+    const int Y0 = 36;
+    const int Y1 = 88;    // 36 + 44 + 8
+    const int Y2 = 140;   // 88 + 44 + 8
+    const int Y3 = 192;   // 140 + 44 + 8
 
-    make_block(s_home, "Wi-Fi",        lv_color_hex(0x4CAF50), wifi_btn_cb,     X0, Y0, 144);
-    make_block(s_home, "BLUETOOTH",    lv_color_hex(0x00BCD4), ble_btn_cb,      X1, Y0, 144);
-    make_block(s_home, "SPECTRUM",     lv_color_hex(0xFF9800), spectrum_btn_cb, X0, Y1, 144);
-    make_block(s_home, "ENVIRONMENT",  lv_color_hex(0x2196F3), env_btn_cb,      X1, Y1, 144);
-    make_block(s_home, "GPS",          lv_color_hex(0x9C27B0), gps_btn_cb,      X0, Y2, 144);
-    make_block(s_home, "ALERTS",       lv_color_hex(0xF44336), alerts_btn_cb,   X1, Y2, 144);
-    make_block(s_home, "SETTINGS",     lv_color_hex(0x607D8B), settings_btn_cb, X0, Y3, 304);
+    // Wi-Fi — fresh green gradient
+    make_block(s_home, "Wi-Fi",
+               lv_color_hex(0x66BB6A), lv_color_hex(0x2E7D32),
+               lv_color_hex(0x388E3C), lv_color_hex(0x1B5E20),
+               wifi_btn_cb, X0, Y0, 144);
+
+    // BLUETOOTH — electric cyan gradient
+    make_block(s_home, "BLUETOOTH",
+               lv_color_hex(0x26C6DA), lv_color_hex(0x00838F),
+               lv_color_hex(0x0097A7), lv_color_hex(0x006064),
+               ble_btn_cb, X1, Y0, 144);
+
+    // SPECTRUM — warm orange gradient
+    make_block(s_home, "SPECTRUM",
+               lv_color_hex(0xFFA726), lv_color_hex(0xEF6C00),
+               lv_color_hex(0xF57C00), lv_color_hex(0xE65100),
+               spectrum_btn_cb, X0, Y1, 144);
+
+    // ENVIRONMENT — sky blue gradient
+    make_block(s_home, "ENVIRONMENT",
+               lv_color_hex(0x42A5F5), lv_color_hex(0x1565C0),
+               lv_color_hex(0x1976D2), lv_color_hex(0x0D47A1),
+               env_btn_cb, X1, Y1, 144);
+
+    // GPS — royal purple gradient
+    make_block(s_home, "GPS",
+               lv_color_hex(0xAB47BC), lv_color_hex(0x6A1B9A),
+               lv_color_hex(0x8E24AA), lv_color_hex(0x4A148C),
+               gps_btn_cb, X0, Y2, 144);
+
+    // ALERTS — alert red gradient
+    make_block(s_home, "ALERTS",
+               lv_color_hex(0xEF5350), lv_color_hex(0xC62828),
+               lv_color_hex(0xD32F2F), lv_color_hex(0xB71C1C),
+               alerts_btn_cb, X1, Y2, 144);
+
+    // SETTINGS — gunmetal steel gradient, full width
+    make_block(s_home, "SETTINGS",
+               lv_color_hex(0x90A4AE), lv_color_hex(0x455A64),
+               lv_color_hex(0x607D8B), lv_color_hex(0x263238),
+               settings_btn_cb, X0, Y3, 304);
 
     return s_home;
 }
