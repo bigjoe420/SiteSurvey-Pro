@@ -1,6 +1,7 @@
 #include "power_mgr.h"
 
 #include "board_pins.h"
+#include "flash_broker.h"
 #include "driver/ledc.h"
 #include "esp_check.h"
 #include "esp_log.h"
@@ -62,13 +63,26 @@ static void nvs_load(void)
     s_sleep_en  = (e != 0);
 }
 
-static void nvs_save(void)
+static void nvs_save_now(void)
 {
     if (s_nvs == 0) return;
     nvs_set_i32(s_nvs, SSP_PM_NVS_KEY_TIMEOUT, (int32_t)s_timeout_s);
     nvs_set_i32(s_nvs, SSP_PM_NVS_KEY_DIM,     (int32_t)s_dim_pct);
     nvs_set_u8 (s_nvs, SSP_PM_NVS_KEY_SLEEP,   s_sleep_en ? 1 : 0);
     nvs_commit(s_nvs);
+}
+
+static void nvs_save_tramp(void*)
+{
+    nvs_save_now();
+}
+
+// NVS commit erases/writes flash. The setters run on the UI task, whose
+// stack lives in PSRAM — unreachable while the cache is down during a flash
+// write. Run the commit on the broker task (internal-RAM stack) instead.
+static void nvs_save(void)
+{
+    flash_broker_exec(nvs_save_tramp, nullptr);
 }
 
 // ---------------------------------------------------------------------------

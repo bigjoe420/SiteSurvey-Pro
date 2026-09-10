@@ -1,5 +1,6 @@
 #include "alert_engine.h"
 #include "led_rgb.h"
+#include "flash_broker.h"
 
 #include <cstdio>
 #include <cstring>
@@ -117,12 +118,22 @@ const AlertConfig_t* alert_config_get(void)
     return &s_cfg;
 }
 
+static esp_err_t s_nvs_ret;  // trampoline result (alert_config_set has one caller: the UI task)
+
+static void nvs_save_tramp(void*)
+{
+    s_nvs_ret = nvs_save();
+}
+
 esp_err_t alert_config_set(const AlertConfig_t* cfg)
 {
     taskENTER_CRITICAL(&s_log_mux);
     s_cfg = *cfg;
     taskEXIT_CRITICAL(&s_log_mux);
-    return nvs_save();
+    // NVS commit erases/writes flash; callers (UI task) have PSRAM stacks,
+    // unreachable while the cache is down — run the write on the broker task.
+    flash_broker_exec(nvs_save_tramp, nullptr);
+    return s_nvs_ret;
 }
 
 void alert_log_clear(void)
