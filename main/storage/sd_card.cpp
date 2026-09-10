@@ -25,7 +25,7 @@ esp_err_t sd_card_init(void)
 
     esp_vfs_fat_mount_config_t mnt = {};
     mnt.format_if_mount_failed = false;
-    mnt.max_files = 4;
+    mnt.max_files = 6;
 
     sdmmc_card_t* card;
     esp_err_t err = esp_vfs_fat_sdspi_mount(SD_MOUNT, &host, &slot, &mnt, &card);
