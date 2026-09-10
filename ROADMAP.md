@@ -88,8 +88,8 @@ Hardware verification and board support package (BSP) establishment completed.
 - [ ] On-device RSSI graphing (RSSI over time per AP) — top priority
 - [ ] Power management & battery life optimization
 - [ ] UI themes (outdoor high-contrast mode)
-- [ ] Configurable scan filters (by RSSI threshold, SSID regex, channel)
-- [ ] Firmware update mechanism (OTA or USB)
+- [x] Configurable scan filters (by RSSI threshold, SSID pattern, 2.4/5 GHz band) — verified on-device 2026-09-07
+- [x] Firmware update mechanism — SD-card OTA via esp_ota_ops, version-aware picker — verified boot 2026-09-10 (commits `bb1072e`, `7a3cbac`, `9d42e1e`, tag `v0.9.0`)
 - [ ] On-device scan report generation
 
 ---
