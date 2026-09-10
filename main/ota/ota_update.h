@@ -7,6 +7,7 @@
 typedef struct {
     char     name[64];   // file name only (e.g. "SiteSurvey-Pro.bin")
     uint32_t size;       // bytes
+    char     version[16];// app version from the image's embedded descriptor ("?" if unreadable)
 } OtaFile_t;
 
 // Scan the SD card root ("/sdcard") for *.bin files that plausibly fit an
