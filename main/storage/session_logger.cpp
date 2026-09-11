@@ -3,6 +3,8 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <unistd.h>
+#include <sys/stat.h>
 #include "sd_card.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
@@ -30,7 +32,7 @@ static LogEntry s_buf[BUF_ENTRIES];
 static int      s_buf_n;
 static FILE*    s_f;
 static bool     s_active;
-static char     s_path[64];
+static char     s_path[96];
 static TickType_t s_last_flush;
 
 // Last-known-good GPS position — survives brief fix dropouts during survey walks.
@@ -83,10 +85,20 @@ static const char* fmt_auth(wifi_auth_mode_t mode)
     }
 }
 
+static void sync_dir_entry(void)
+{
+    // FATFS only updates the directory entry (size, cluster chain) on
+    // f_sync/f_close. fflush() alone leaves a stale dir entry, so after a
+    // power cut the file appears 0 bytes even though data clusters were
+    // written. fsync forces the dir entry out after every flush.
+    if (s_f) fsync(fileno(s_f));
+}
+
 static void write_buffer(void)
 {
     if (!s_f || s_buf_n == 0) return;
-    for (int i = 0; i < s_buf_n; i++) {
+    int n = s_buf_n;
+    for (int i = 0; i < n; i++) {
         const LogEntry* e = &s_buf[i];
         fprintf(s_f, "%s,%s,%s,%s,%u,%d,%.7f,%.7f,%u,%u\n",
                 e->ts, e->mac, e->ssid, e->auth,
@@ -94,9 +106,10 @@ static void write_buffer(void)
                 e->sats, e->fix_q);
     }
     fflush(s_f);
+    sync_dir_entry();
     s_buf_n = 0;
     s_last_flush = xTaskGetTickCount();
-    ESP_LOGI(TAG, "flushed %d entries to %s", s_buf_n, s_path);
+    ESP_LOGI(TAG, "flushed %d entries to %s", n, s_path);
 }
 
 esp_err_t session_logger_init(void)
@@ -115,10 +128,20 @@ void session_logger_start(void)
     time_t now = time(nullptr);
     struct tm tm;
     localtime_r(&now, &tm);
-    snprintf(s_path, sizeof(s_path),
-             SD_PREFIX "/survey_%04d%02d%02d_%02d%02d%02d.csv",
+
+    // Without SNTP the clock starts at 1970 on every boot, so the same name
+    // recurs and "w" would truncate a previous session. Bump a numeric
+    // suffix until the name is free.
+    char base[80];
+    snprintf(base, sizeof(base), "%s/survey_%04d%02d%02d_%02d%02d%02d",
+             SD_PREFIX,
              tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
              tm.tm_hour, tm.tm_min, tm.tm_sec);
+    snprintf(s_path, sizeof(s_path), "%s.csv", base);
+    struct stat st;
+    for (int suffix = 2; stat(s_path, &st) == 0 && suffix < 100; suffix++) {
+        snprintf(s_path, sizeof(s_path), "%s_%d.csv", base, suffix);
+    }
 
     s_f = fopen(s_path, "w");
     if (!s_f) {
@@ -128,6 +151,7 @@ void session_logger_start(void)
 
     fprintf(s_f, "timestamp,mac,ssid,authmode,channel,rssi,lat,lon,sats,fix_q\n");
     fflush(s_f);
+    sync_dir_entry();
     s_active = true;
     s_buf_n = 0;
     s_last_flush = xTaskGetTickCount();
@@ -159,41 +183,6 @@ void session_logger_log_ap(const ScanResult_t* ap, const GpsState* gps)
     }
 
     LogEntry* e = &s_buf[s_buf_n++];
-    fmt_ts(e->ts, sizeof(e->ts), gps);
-    fmt_mac(e->mac, ap->bssid);
-    snprintf(e->ssid, sizeof(e->ssid), "%s", ap->ssid[0] ? (const char*)ap->ssid : "<hidden>");
-    snprintf(e->auth, sizeof(e->auth), "%s", fmt_auth(ap->authmode));
-    e->channel = ap->channel;
-    e->rssi = ap->rssi;
-
-    // Use current fix if valid; otherwise fall back to last-known-good position.
-    const GpsState* fix = nullptr;
-    if (gps && gps->fix_valid) {
-        s_last_fix = *gps;           // cache the good fix
-        fix = gps;
-    } else if (s_last_fix.fix_valid) {
-        fix = &s_last_fix;           // brief dropout — use cached position
-    }
-    if (fix) {
-        e->lat  = fix->lat_e7 / 1e7f;
-        e->lon  = fix->lon_e7 / 1e7f;
-        e->sats = fix->sats;
-        e->fix_q = (fix == gps) ? fix->fix_quality : 0; // 0 = cached / no current fix
-    } else {
-        e->lat = e->lon = 0.0f;
-        e->sats = 0;
-        e->fix_q = 0;
-    }
-    fmt_ts(e->ts, sizeof(e->ts), gps);
-    fmt_mac(e->mac, ap->bssid);
-    snprintf(e->ssid, sizeof(e->ssid), "%s", ap->ssid[0] ? (const char*)ap->ssid : "<hidden>");
-    snprintf(e->auth, sizeof(e->auth), "%s", fmt_auth(ap->authmode));
-    e->channel = ap->channel;
-    e->rssi = ap->rssi;
-    e->lat = (gps && gps->fix_valid) ? (gps->lat_e7 / 1e7f) : 0.0f;
-    e->lon = (gps && gps->fix_valid) ? (gps->lon_e7 / 1e7f) : 0.0f;
-    e->sats = (gps && gps->fix_valid) ? gps->sats : 0;
-    e->fix_q = (gps && gps->fix_valid) ? gps->fix_quality : 0;
 }
 
 void session_logger_flush(void)
