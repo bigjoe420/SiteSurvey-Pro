@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include "sd_card.h"
+#include "session_csv.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -22,8 +23,8 @@ struct LogEntry {
     char auth[16];
     uint8_t channel;
     int8_t  rssi;
-    float   lat;
-    float   lon;
+    int32_t lat_e7;       // degrees x 1e7, 0 = no fix
+    int32_t lon_e7;
     uint8_t sats;
     uint8_t fix_q;
 };
@@ -100,9 +101,14 @@ static void write_buffer(void)
     int n = s_buf_n;
     for (int i = 0; i < n; i++) {
         const LogEntry* e = &s_buf[i];
-        fprintf(s_f, "%s,%s,%s,%s,%u,%d,%.7f,%.7f,%u,%u\n",
+        // Integer-only coordinate formatting: newlib %f (mprec) is stack-
+        // hungry and has overflowed small task stacks before.
+        char latbuf[16], lonbuf[16];
+        fmt_deg7_e7(latbuf, sizeof(latbuf), e->lat_e7);
+        fmt_deg7_e7(lonbuf, sizeof(lonbuf), e->lon_e7);
+        fprintf(s_f, "%s,%s,%s,%s,%u,%d,%s,%s,%u,%u\n",
                 e->ts, e->mac, e->ssid, e->auth,
-                e->channel, e->rssi, e->lat, e->lon,
+                e->channel, e->rssi, latbuf, lonbuf,
                 e->sats, e->fix_q);
     }
     fflush(s_f);
@@ -155,6 +161,17 @@ void session_logger_start(void)
     s_active = true;
     s_buf_n = 0;
     s_last_flush = xTaskGetTickCount();
+
+    // Remember the active session so exporters (KML / report) pick THIS
+    // file even with a 1970 clock, where neither name nor mtime order is
+    // reliable across boots. SD pointer file, not NVS: flash/NVS access
+    // from PSRAM-stack tasks (the export callbacks) locks up the CPU.
+    FILE* pf = fopen(SD_PREFIX "/current_session", "w");
+    if (pf) {
+        fputs(s_path, pf);
+        fputc('\n', pf);
+        fclose(pf);
+    }
     ESP_LOGI(TAG, "session started: %s", s_path);
 }
 
@@ -183,6 +200,23 @@ void session_logger_log_ap(const ScanResult_t* ap, const GpsState* gps)
     }
 
     LogEntry* e = &s_buf[s_buf_n++];
+    fmt_ts(e->ts, sizeof(e->ts), gps);
+    fmt_mac(e->mac, ap->bssid);
+    snprintf(e->ssid, sizeof(e->ssid), "%s", (const char*)ap->ssid);
+    snprintf(e->auth, sizeof(e->auth), "%s", fmt_auth(ap->authmode));
+    e->channel = ap->channel;
+    e->rssi    = ap->rssi;
+    if (gps && gps->fix_valid) {
+        e->lat_e7 = gps->lat_e7;
+        e->lon_e7 = gps->lon_e7;
+        e->sats  = gps->sats;
+        e->fix_q = gps->fix_quality;
+    } else {
+        e->lat_e7 = 0;
+        e->lon_e7 = 0;
+        e->sats  = 0;
+        e->fix_q = 0;
+    }
 }
 
 void session_logger_flush(void)
