@@ -239,8 +239,9 @@ extern "C" void app_main(void)
 
     // Flash-write broker: NVS commits requested by PSRAM-stack tasks (UI)
     // run here on an internal-RAM stack. Must exist before the UI task starts.
-    // BISECT: disabled to test boot without the broker task
-    // flash_broker_init();
+    // (Was disabled during a splash bisect — without it every settings save
+    // runs NVS inline on the PSRAM-stack UI task and the CPU locks up.)
+    flash_broker_init();
 
     // Splash owns the display first. Home screen is deferred via callback
     // until splash gates clear — preventing ~100+ widget objects + 25KB PSRAM
