@@ -14,6 +14,7 @@
 #define SSP_PM_NVS_KEY_TIMEOUT "bl_timeout"
 #define SSP_PM_NVS_KEY_DIM     "bl_dim"
 #define SSP_PM_NVS_KEY_SLEEP   "ls_enable"
+#define SSP_PM_NVS_KEY_AUTOOFF "auto_off"
 
 typedef enum {
     SSP_PM_BL_OFF = 0,
@@ -49,6 +50,12 @@ void    power_mgr_set_dim_pct(uint8_t pct);
 // Light-sleep enable: CPU sleeps between scans when idle.
 bool power_mgr_get_sleep_en(void);
 void power_mgr_set_sleep_en(bool en);
+
+// Auto power-off: minutes of touch-idle before deep sleep. 0 = never.
+// Deep sleep is the same state as Power Off (wake with BOOT). Off by
+// default — a unit left scanning a site must not stop logging on its own.
+uint16_t power_mgr_get_auto_off_min(void);
+void     power_mgr_set_auto_off_min(uint16_t minutes);
 
 // Full power off: backlight off, then deep sleep. Wake by pressing the BOOT
 // button (GPIO0, held low). Consumes only RTC-domain power while off.
