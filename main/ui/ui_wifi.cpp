@@ -6,6 +6,7 @@
 #include "scan_engine.h"
 #include "ui_home.h"
 #include "ui_wifi_detail.h"
+#include "ui_theme.h"
 
 #define MAX_ROWS 48
 
@@ -57,10 +58,7 @@ static bool s_env_has_snap;
 static bool s_env_bme_present;
 
 // ROADMAP §5 tiers: Strong green, Moderate yellow, Weak orange, Marginal red
-static const lv_color_t TIER_COLORS[] = {
-    lv_color_hex(0x4CAF50), lv_color_hex(0xFFEB3B),
-    lv_color_hex(0xFF9800), lv_color_hex(0xF44336),
-};
+// (resolved through the theme so outdoor mode gets brighter tiers)
 
 #define ROW_H       30
 #define ROW_STRIDE  32
@@ -95,14 +93,14 @@ static void build_row(lv_obj_t* parent, Row* r, int idx)
     lv_obj_set_style_bg_opa(r->row, LV_OPA_COVER, 0);
     lv_obj_set_style_border_side(r->row, LV_BORDER_SIDE_BOTTOM, 0);
     lv_obj_set_style_border_width(r->row, 1, 0);
-    lv_obj_set_style_border_color(r->row, lv_color_hex(0x222222), 0);
+    lv_obj_set_style_border_color(r->row, THM_BORDER, 0);
     lv_obj_set_style_pad_all(r->row, 2, 0);
 
     r->bar = lv_bar_create(r->row);
     lv_bar_set_range(r->bar, -100, -25);
     lv_obj_set_size(r->bar, COL_BAR_W, 10);
     lv_obj_set_pos(r->bar, COL_BAR_X, (ROW_H - 10) / 2);
-    lv_obj_set_style_bg_color(r->bar, lv_color_hex(0x1E1E1E), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(r->bar, THM_TRACK, LV_PART_MAIN);
     lv_obj_set_style_bg_opa(r->bar, LV_OPA_COVER, LV_PART_MAIN);
 
     r->ssid = lv_label_create(r->row);
@@ -114,7 +112,7 @@ static void build_row(lv_obj_t* parent, Row* r, int idx)
     r->info = lv_label_create(r->row);
     lv_obj_set_size(r->info, COL_INFO_W, LV_SIZE_CONTENT);
     lv_label_set_long_mode(r->info, LV_LABEL_LONG_CLIP);
-    lv_obj_set_style_text_color(r->info, lv_color_hex(0xE8E8E8), 0);
+    lv_obj_set_style_text_color(r->info, THM_TEXT, 0);
     lv_obj_set_style_text_align(r->info, LV_TEXT_ALIGN_LEFT, 0);
     lv_obj_set_pos(r->info, COL_INFO_X, (ROW_H - lv_font_get_line_height(&lv_font_montserrat_14)) / 2);
 
@@ -122,21 +120,21 @@ static void build_row(lv_obj_t* parent, Row* r, int idx)
     r->detail_btn = lv_btn_create(r->row);
     lv_obj_set_size(r->detail_btn, 26, 20);
     lv_obj_set_pos(r->detail_btn, ROW_W - 30, 5);
-    lv_obj_set_style_bg_color(r->detail_btn, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_bg_color(r->detail_btn, THM_BTN, 0);
     lv_obj_set_style_radius(r->detail_btn, 2, 0);
     lv_obj_add_event_cb(r->detail_btn, row_click_cb, LV_EVENT_CLICKED, (void*)(intptr_t)idx);
 
     lv_obj_t* detail_lbl = lv_label_create(r->detail_btn);
     lv_label_set_text(detail_lbl, ">");
     lv_obj_set_style_text_font(detail_lbl, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(detail_lbl, lv_color_hex(0xB0B0B0), 0);
+    lv_obj_set_style_text_color(detail_lbl, THM_LABEL, 0);
     lv_obj_center(detail_lbl);
 
     // Rogue AP warning label - positioned left of detail button
     r->rogue_lbl = lv_label_create(r->row);
     lv_label_set_text(r->rogue_lbl, "!");
     lv_obj_set_style_text_font(r->rogue_lbl, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(r->rogue_lbl, lv_color_hex(0xF44336), 0);
+    lv_obj_set_style_text_color(r->rogue_lbl, THM_BAD, 0);
     lv_obj_set_pos(r->rogue_lbl, ROW_W - 48, 5);
     lv_obj_add_flag(r->rogue_lbl, LV_OBJ_FLAG_HIDDEN);
 }
@@ -151,16 +149,16 @@ static void update_env_overlay(void)
 
     int state = 0;
     const char* text = nullptr;
-    lv_color_t color = lv_color_hex(0x4CAF50);
+    lv_color_t color = THM_OK;
 
     if (!present) {
         state = 1;
         text = "BME680 OFFLINE";
-        color = lv_color_hex(0xF44336);
+        color = THM_BAD;
     } else if (!have || !snap.env_valid) {
         state = 2;
         text = "ENV WAITING...";
-        color = lv_color_hex(0xFFC107);
+        color = THM_WARN;
     } else {
         int32_t temp_f_x100 = snap.env.temp_c_x100 * 9 / 5 + 3200;
         int temp_whole = (int)(temp_f_x100 / 100);
@@ -172,7 +170,7 @@ static void update_env_overlay(void)
         snprintf(buf, sizeof(buf), "%d.%d°F  %d%%  %dhPa", temp_whole, temp_frac, hum_whole, press_hpa);
         text = buf;
         state = 3;
-        color = lv_color_hex(0x4CAF50);
+        color = THM_OK;
     }
 
     // Only touch widgets when state or text actually changes
@@ -231,7 +229,7 @@ static void do_refresh(void)
         }
         if (ap->rssi != st->rssi) {
             st->rssi = ap->rssi;
-            lv_color_t c = TIER_COLORS[ap->severity];
+            lv_color_t c = ui_theme_tier_color(ap->severity);
             lv_bar_set_value(r->bar, ap->rssi, LV_ANIM_OFF);
             lv_obj_set_style_bg_color(r->bar, c, LV_PART_INDICATOR);
             lv_obj_set_style_text_color(r->ssid, c, 0);
@@ -360,7 +358,7 @@ lv_obj_t* ui_wifi_create(void)
     // Environmental overlay — top-right, compact readout
     s_env_overlay = lv_label_create(scr);
     lv_label_set_text(s_env_overlay, "ENV WAITING...");
-    lv_obj_set_style_text_color(s_env_overlay, lv_color_hex(0xFFC107), 0);
+    lv_obj_set_style_text_color(s_env_overlay, THM_WARN, 0);
     lv_obj_set_style_text_font(s_env_overlay, &lv_font_montserrat_14, 0);
     lv_obj_set_pos(s_env_overlay, 90, 16);
 
@@ -368,7 +366,7 @@ lv_obj_t* ui_wifi_create(void)
     lv_obj_t* back = lv_btn_create(scr);
     lv_obj_set_size(back, 80, 32);
     lv_obj_set_pos(back, 4, 4);
-    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_bg_color(back, THM_BTN, 0);
     lv_obj_set_style_radius(back, 3, 0);
     lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
     // ext_click_area 32 (was 24): retest capture 2026-08-31 showed 70/70

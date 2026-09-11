@@ -13,10 +13,12 @@
 #include "report_export.h"
 #include "esp_heap_caps.h"
 #include "esp_app_desc.h"
+#include "esp_system.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/idf_additions.h"
 #include "scan_engine.h"
+#include "ui_theme.h"
 
 static bool s_visible;
 static lv_obj_t* s_scr;
@@ -42,6 +44,8 @@ static lv_obj_t* s_lbl_timeout;
 static lv_obj_t* s_lbl_dim;
 static lv_obj_t* s_lbl_auto_off;
 static lv_obj_t* s_switch_sleep;
+static lv_obj_t* s_switch_outdoor;
+static lv_obj_t* s_lbl_outdoor;
 
 // Scan filter widgets
 static lv_obj_t* s_switch_band2;
@@ -189,6 +193,13 @@ static void refresh_power_labels(void)
             lv_obj_clear_state(s_switch_sleep, LV_STATE_CHECKED);
         }
     }
+    if (s_switch_outdoor) {
+        if (power_mgr_get_outdoor()) {
+            lv_obj_add_state(s_switch_outdoor, LV_STATE_CHECKED);
+        } else {
+            lv_obj_clear_state(s_switch_outdoor, LV_STATE_CHECKED);
+        }
+    }
 }
 
 static void timeout_minus_cb(lv_event_t*)
@@ -235,6 +246,29 @@ static void sleep_toggle_cb(lv_event_t* e)
 {
     lv_obj_t* sw = (lv_obj_t*)lv_event_get_target(e);
     power_mgr_set_sleep_en(lv_obj_has_state(sw, LV_STATE_CHECKED));
+}
+
+// Outdoor mode swaps the UI palette at boot, so the toggle saves the setting
+// and restarts. The restart is deferred through a one-shot LVGL timer so the
+// switch renders its new state first (same pattern as power_off_cb).
+static void outdoor_restart_timer_cb(lv_timer_t* t)
+{
+    lv_timer_del(t);
+    ESP_LOGI("settings", "outdoor mode toggle - restarting to apply theme");
+    esp_restart();  // never returns
+}
+
+static void outdoor_toggle_cb(lv_event_t* e)
+{
+    lv_obj_t* sw = (lv_obj_t*)lv_event_get_target(e);
+    bool en = lv_obj_has_state(sw, LV_STATE_CHECKED);
+    power_mgr_set_outdoor(en);   // NVS via flash broker; survives the restart
+    if (s_lbl_outdoor) {
+        lv_label_set_text(s_lbl_outdoor, en ? "Outdoor mode - restarting..."
+                                            : "Outdoor mode restarting...");
+    }
+    lv_obj_clear_flag(sw, LV_OBJ_FLAG_CLICKABLE);  // ignore repeat taps
+    lv_timer_create(outdoor_restart_timer_cb, 900, nullptr);
 }
 
 static void auto_off_minus_cb(lv_event_t*)
@@ -552,7 +586,7 @@ static void open_pick_modal(void)
         lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_size(row, 304, 28);
         lv_obj_set_pos(row, 0, s_pick_count * 28);
-        lv_obj_set_style_bg_color(row, lv_color_hex(0x1A1A1A), 0);
+        lv_obj_set_style_bg_color(row, lv_color_hex(ui_theme()->row), 0);
         lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(row, 0, 0);
         lv_obj_set_style_pad_all(row, 2, 0);
@@ -565,7 +599,7 @@ static void open_pick_modal(void)
                  aps[i].rssi);
         lv_label_set_text(lbl, buf);
         lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
-        lv_obj_set_style_text_color(lbl, lv_color_hex(0xE8E8E8), 0);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(ui_theme()->text), 0);
         lv_obj_set_pos(lbl, 4, 4);
 
         lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
@@ -700,7 +734,7 @@ enum { OTA_STATE_PICK = 0, OTA_STATE_CONFIRM = 1, OTA_STATE_FLASH = 2 };
 static void ota_ui_state(int state)
 {
     if (!s_ota_modal) return;
-    lv_obj_set_style_text_color(s_ota_status, lv_color_hex(0xE8E8E8), 0);
+    lv_obj_set_style_text_color(s_ota_status, lv_color_hex(ui_theme()->text), 0);
     switch (state) {
     case OTA_STATE_PICK:
         lv_label_set_text(s_ota_title, "Firmware files on SD");
@@ -757,7 +791,7 @@ static void ota_pick_file_cb(lv_event_t* e)
              same ? "\nSame version as running firmware" : "");
     lv_label_set_text(s_ota_status, buf);
     ota_ui_state(OTA_STATE_CONFIRM);
-    if (same) lv_obj_set_style_text_color(s_ota_status, lv_color_hex(0xFFB300), 0);
+    if (same) lv_obj_set_style_text_color(s_ota_status, THM_WARN, 0);
 }
 
 // Runs on the LVGL task via lv_async_call (flash task context is unsafe for LVGL)
@@ -781,7 +815,7 @@ static void ota_fail_async(void* user_data)
     if (s_ota_title) lv_label_set_text(s_ota_title, "Firmware files on SD");
     if (s_ota_status) {
         lv_label_set_text(s_ota_status, msg ? msg : "Flash failed");
-        lv_obj_set_style_text_color(s_ota_status, lv_color_hex(0xEF5350), 0);
+        lv_obj_set_style_text_color(s_ota_status, THM_BAD_SOFT, 0);
     }
     if (msg) free(msg);
     if (s_ota_bar) lv_obj_add_flag(s_ota_bar, LV_OBJ_FLAG_HIDDEN);
@@ -860,7 +894,7 @@ static void ota_build_file_list(void)
         lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_set_size(row, 304, 28);
         lv_obj_set_pos(row, 0, i * 28);
-        lv_obj_set_style_bg_color(row, lv_color_hex(0x1A1A1A), 0);
+        lv_obj_set_style_bg_color(row, lv_color_hex(ui_theme()->row), 0);
         lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(row, 0, 0);
         lv_obj_set_style_pad_all(row, 2, 0);
@@ -875,8 +909,8 @@ static void ota_build_file_list(void)
             lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
             // Dim rows that carry the same version as the running firmware
             lv_obj_set_style_text_color(lbl, ota_is_current(s_ota_files[i].version)
-                                           ? lv_color_hex(0x757575)
-                                           : lv_color_hex(0xE8E8E8), 0);
+                                           ? lv_color_hex(ui_theme()->faint)
+                                           : lv_color_hex(ui_theme()->text), 0);
             lv_obj_set_pos(lbl, 4, 4);
         }
 
@@ -913,7 +947,7 @@ static lv_obj_t* make_target_row(lv_obj_t* parent, int y, lv_event_cb_t edit_cb,
     lv_obj_remove_flag(row, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_size(row, 304, 24);
     lv_obj_set_pos(row, 4, y);
-    lv_obj_set_style_bg_color(row, lv_color_hex(0x1A1A1A), 0);
+    lv_obj_set_style_bg_color(row, lv_color_hex(ui_theme()->row), 0);
     lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(row, 0, 0);
     lv_obj_set_style_radius(row, 2, 0);
@@ -924,7 +958,7 @@ static lv_obj_t* make_target_row(lv_obj_t* parent, int y, lv_event_cb_t edit_cb,
     if (lbl) {
         lv_label_set_text(lbl, "---");
         lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
-        lv_obj_set_style_text_color(lbl, lv_color_hex(0xE8E8E8), 0);
+        lv_obj_set_style_text_color(lbl, lv_color_hex(ui_theme()->text), 0);
         lv_obj_set_pos(lbl, 4, 2);
         // Do NOT add CLICKABLE � label must not compete with panel scroll
     }
@@ -934,7 +968,7 @@ static lv_obj_t* make_target_row(lv_obj_t* parent, int y, lv_event_cb_t edit_cb,
     if (edit) {
         lv_obj_set_size(edit, 28, 20);
         lv_obj_set_pos(edit, 220, 2);
-        lv_obj_set_style_bg_color(edit, lv_color_hex(0x2E7D32), 0);
+        lv_obj_set_style_bg_color(edit, lv_color_hex(ui_theme()->btn_ok), 0);
         lv_obj_set_style_radius(edit, 2, 0);
         lv_obj_add_event_cb(edit, edit_cb, LV_EVENT_CLICKED, user_data);
         lv_obj_t* edit_lbl = lv_label_create(edit);
@@ -951,7 +985,7 @@ static lv_obj_t* make_target_row(lv_obj_t* parent, int y, lv_event_cb_t edit_cb,
     if (del) {
         lv_obj_set_size(del, 40, 20);
         lv_obj_set_pos(del, 260, 2);
-        lv_obj_set_style_bg_color(del, lv_color_hex(0xB71C1C), 0);
+        lv_obj_set_style_bg_color(del, lv_color_hex(ui_theme()->btn_del), 0);
         lv_obj_set_style_radius(del, 2, 0);
         lv_obj_add_event_cb(del, del_cb, LV_EVENT_CLICKED, user_data);
 
@@ -1023,7 +1057,7 @@ lv_obj_t* ui_settings_create(void)
         if (lbl_enabled) {
             lv_label_set_text(lbl_enabled, "Alerts");
             lv_obj_set_style_text_font(lbl_enabled, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl_enabled, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_style_text_color(lbl_enabled, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_enabled, 8, y + 6);
         }
 
@@ -1042,7 +1076,7 @@ lv_obj_t* ui_settings_create(void)
         if (lbl_rssi_title) {
             lv_label_set_text(lbl_rssi_title, "RSSI threshold");
             lv_obj_set_style_text_font(lbl_rssi_title, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl_rssi_title, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_style_text_color(lbl_rssi_title, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_rssi_title, 8, y + 6);
         }
 
@@ -1050,7 +1084,7 @@ lv_obj_t* ui_settings_create(void)
         if (s_lbl_rssi) {
             lv_label_set_text(s_lbl_rssi, "-80 dBm");
             lv_obj_set_style_text_font(s_lbl_rssi, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_lbl_rssi, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_style_text_color(s_lbl_rssi, lv_color_hex(ui_theme()->text), 0);
             lv_obj_set_pos(s_lbl_rssi, 140, y + 6);
             // Label no longer clickable � use +/- buttons or keyboard modal
             // to prevent scroll interference on the panel
@@ -1060,7 +1094,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_minus) {
             lv_obj_set_size(btn_minus, 28, 24);
             lv_obj_set_pos(btn_minus, 220, y + 3);
-            lv_obj_set_style_bg_color(btn_minus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_color(btn_minus, lv_color_hex(ui_theme()->btn), 0);
             lv_obj_set_style_radius(btn_minus, 2, 0);
             lv_obj_add_event_cb(btn_minus, rssi_minus_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_set_ext_click_area(btn_minus, 2);
@@ -1075,7 +1109,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_plus) {
             lv_obj_set_size(btn_plus, 28, 24);
             lv_obj_set_pos(btn_plus, 272, y + 3);
-            lv_obj_set_style_bg_color(btn_plus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_color(btn_plus, lv_color_hex(ui_theme()->btn), 0);
             lv_obj_set_style_radius(btn_plus, 2, 0);
             lv_obj_add_event_cb(btn_plus, rssi_plus_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_set_ext_click_area(btn_plus, 2);
@@ -1094,7 +1128,7 @@ lv_obj_t* ui_settings_create(void)
         if (s_lbl_ssid_header) {
             lv_label_set_text(s_lbl_ssid_header, "SSID targets (0/4)");
             lv_obj_set_style_text_font(s_lbl_ssid_header, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_lbl_ssid_header, lv_color_hex(0x909090), 0);
+            lv_obj_set_style_text_color(s_lbl_ssid_header, lv_color_hex(ui_theme()->sub), 0);
             lv_obj_set_pos(s_lbl_ssid_header, 8, y);
         }
         y += 18 + GAP;
@@ -1111,7 +1145,7 @@ lv_obj_t* ui_settings_create(void)
         if (s_ssid_add_btn) {
             lv_obj_set_size(s_ssid_add_btn, 120, 24);
             lv_obj_set_pos(s_ssid_add_btn, 8, y);
-            lv_obj_set_style_bg_color(s_ssid_add_btn, lv_color_hex(0x2E7D32), 0);
+            lv_obj_set_style_bg_color(s_ssid_add_btn, lv_color_hex(ui_theme()->btn_ok), 0);
             lv_obj_set_style_radius(s_ssid_add_btn, 2, 0);
             lv_obj_add_event_cb(s_ssid_add_btn, ssid_add_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_t* lbl_ssid_add = lv_label_create(s_ssid_add_btn);
@@ -1131,7 +1165,7 @@ lv_obj_t* ui_settings_create(void)
         if (s_lbl_bssid_header) {
             lv_label_set_text(s_lbl_bssid_header, "BSSID targets (0/4)");
             lv_obj_set_style_text_font(s_lbl_bssid_header, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_lbl_bssid_header, lv_color_hex(0x909090), 0);
+            lv_obj_set_style_text_color(s_lbl_bssid_header, lv_color_hex(ui_theme()->sub), 0);
             lv_obj_set_pos(s_lbl_bssid_header, 8, y);
         }
         y += 18 + GAP;
@@ -1148,7 +1182,7 @@ lv_obj_t* ui_settings_create(void)
         if (s_bssid_add_btn) {
             lv_obj_set_size(s_bssid_add_btn, 120, 24);
             lv_obj_set_pos(s_bssid_add_btn, 8, y);
-            lv_obj_set_style_bg_color(s_bssid_add_btn, lv_color_hex(0x2E7D32), 0);
+            lv_obj_set_style_bg_color(s_bssid_add_btn, lv_color_hex(ui_theme()->btn_ok), 0);
             lv_obj_set_style_radius(s_bssid_add_btn, 2, 0);
             lv_obj_add_event_cb(s_bssid_add_btn, bssid_add_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_t* lbl_bssid_add = lv_label_create(s_bssid_add_btn);
@@ -1168,7 +1202,7 @@ lv_obj_t* ui_settings_create(void)
         if (lbl_filter) {
             lv_label_set_text(lbl_filter, "Scan Filters");
             lv_obj_set_style_text_font(lbl_filter, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl_filter, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_style_text_color(lbl_filter, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_filter, 8, y + 6);
         }
         y += ROW_H + GAP;
@@ -1178,7 +1212,7 @@ lv_obj_t* ui_settings_create(void)
         if (lbl_b2) {
             lv_label_set_text(lbl_b2, "2.4 GHz");
             lv_obj_set_style_text_font(lbl_b2, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl_b2, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_style_text_color(lbl_b2, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_b2, 8, y + 6);
         }
         s_switch_band2 = lv_switch_create(s_panel);
@@ -1194,7 +1228,7 @@ lv_obj_t* ui_settings_create(void)
         if (lbl_b5) {
             lv_label_set_text(lbl_b5, "5 GHz");
             lv_obj_set_style_text_font(lbl_b5, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl_b5, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_style_text_color(lbl_b5, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_b5, 8, y + 6);
         }
         s_switch_band5 = lv_switch_create(s_panel);
@@ -1210,20 +1244,20 @@ lv_obj_t* ui_settings_create(void)
         if (lbl_frssi) {
             lv_label_set_text(lbl_frssi, "Min RSSI");
             lv_obj_set_style_text_font(lbl_frssi, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl_frssi, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_style_text_color(lbl_frssi, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_frssi, 8, y + 6);
         }
         s_lbl_filter_rssi = lv_label_create(s_panel);
         if (s_lbl_filter_rssi) {
             lv_obj_set_style_text_font(s_lbl_filter_rssi, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_lbl_filter_rssi, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_style_text_color(s_lbl_filter_rssi, lv_color_hex(ui_theme()->text), 0);
             lv_obj_set_pos(s_lbl_filter_rssi, 140, y + 6);
         }
         lv_obj_t* btn_fminus = lv_btn_create(s_panel);
         if (btn_fminus) {
             lv_obj_set_size(btn_fminus, 28, 24);
             lv_obj_set_pos(btn_fminus, 220, y + 3);
-            lv_obj_set_style_bg_color(btn_fminus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_color(btn_fminus, lv_color_hex(ui_theme()->btn), 0);
             lv_obj_set_style_radius(btn_fminus, 2, 0);
             lv_obj_add_event_cb(btn_fminus, filter_rssi_minus_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_set_ext_click_area(btn_fminus, 2);
@@ -1234,7 +1268,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_fplus) {
             lv_obj_set_size(btn_fplus, 28, 24);
             lv_obj_set_pos(btn_fplus, 272, y + 3);
-            lv_obj_set_style_bg_color(btn_fplus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_color(btn_fplus, lv_color_hex(ui_theme()->btn), 0);
             lv_obj_set_style_radius(btn_fplus, 2, 0);
             lv_obj_add_event_cb(btn_fplus, filter_rssi_plus_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_set_ext_click_area(btn_fplus, 2);
@@ -1248,13 +1282,13 @@ lv_obj_t* ui_settings_create(void)
         if (lbl_pat) {
             lv_label_set_text(lbl_pat, "SSID pattern");
             lv_obj_set_style_text_font(lbl_pat, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl_pat, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_style_text_color(lbl_pat, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_pat, 8, y + 6);
         }
         s_lbl_filter_pattern = lv_label_create(s_panel);
         if (s_lbl_filter_pattern) {
             lv_obj_set_style_text_font(s_lbl_filter_pattern, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_lbl_filter_pattern, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_style_text_color(s_lbl_filter_pattern, lv_color_hex(ui_theme()->text), 0);
             lv_obj_set_pos(s_lbl_filter_pattern, 120, y + 6);
             lv_obj_set_width(s_lbl_filter_pattern, 100);
             lv_label_set_long_mode(s_lbl_filter_pattern, LV_LABEL_LONG_CLIP);
@@ -1263,7 +1297,7 @@ lv_obj_t* ui_settings_create(void)
         if (s_btn_filter_pattern) {
             lv_obj_set_size(s_btn_filter_pattern, 60, 22);
             lv_obj_set_pos(s_btn_filter_pattern, 230, y + 4);
-            lv_obj_set_style_bg_color(s_btn_filter_pattern, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_color(s_btn_filter_pattern, lv_color_hex(ui_theme()->btn), 0);
             lv_obj_set_style_radius(s_btn_filter_pattern, 2, 0);
             lv_obj_add_event_cb(s_btn_filter_pattern, filter_pattern_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_t* lbl_edit = lv_label_create(s_btn_filter_pattern);
@@ -1282,7 +1316,7 @@ lv_obj_t* ui_settings_create(void)
         if (lbl_power) {
             lv_label_set_text(lbl_power, "Power");
             lv_obj_set_style_text_font(lbl_power, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl_power, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_style_text_color(lbl_power, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_power, 8, y + 6);
         }
         y += ROW_H + GAP;
@@ -1292,14 +1326,14 @@ lv_obj_t* ui_settings_create(void)
         if (lbl_to_title) {
             lv_label_set_text(lbl_to_title, "Timeout");
             lv_obj_set_style_text_font(lbl_to_title, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl_to_title, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_style_text_color(lbl_to_title, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_to_title, 8, y + 6);
         }
 
         s_lbl_timeout = lv_label_create(s_panel);
         if (s_lbl_timeout) {
             lv_obj_set_style_text_font(s_lbl_timeout, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_lbl_timeout, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_style_text_color(s_lbl_timeout, lv_color_hex(ui_theme()->text), 0);
             lv_obj_set_pos(s_lbl_timeout, 140, y + 6);
         }
 
@@ -1307,7 +1341,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_to_minus) {
             lv_obj_set_size(btn_to_minus, 28, 24);
             lv_obj_set_pos(btn_to_minus, 220, y + 3);
-            lv_obj_set_style_bg_color(btn_to_minus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_color(btn_to_minus, lv_color_hex(ui_theme()->btn), 0);
             lv_obj_set_style_radius(btn_to_minus, 2, 0);
             lv_obj_add_event_cb(btn_to_minus, timeout_minus_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_set_ext_click_area(btn_to_minus, 2);
@@ -1322,7 +1356,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_to_plus) {
             lv_obj_set_size(btn_to_plus, 28, 24);
             lv_obj_set_pos(btn_to_plus, 272, y + 3);
-            lv_obj_set_style_bg_color(btn_to_plus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_color(btn_to_plus, lv_color_hex(ui_theme()->btn), 0);
             lv_obj_set_style_radius(btn_to_plus, 2, 0);
             lv_obj_add_event_cb(btn_to_plus, timeout_plus_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_set_ext_click_area(btn_to_plus, 2);
@@ -1339,14 +1373,14 @@ lv_obj_t* ui_settings_create(void)
         if (lbl_dim_title) {
             lv_label_set_text(lbl_dim_title, "Dim level");
             lv_obj_set_style_text_font(lbl_dim_title, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl_dim_title, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_style_text_color(lbl_dim_title, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_dim_title, 8, y + 6);
         }
 
         s_lbl_dim = lv_label_create(s_panel);
         if (s_lbl_dim) {
             lv_obj_set_style_text_font(s_lbl_dim, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_lbl_dim, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_style_text_color(s_lbl_dim, lv_color_hex(ui_theme()->text), 0);
             lv_obj_set_pos(s_lbl_dim, 140, y + 6);
         }
 
@@ -1354,7 +1388,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_dim_minus) {
             lv_obj_set_size(btn_dim_minus, 28, 24);
             lv_obj_set_pos(btn_dim_minus, 220, y + 3);
-            lv_obj_set_style_bg_color(btn_dim_minus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_color(btn_dim_minus, lv_color_hex(ui_theme()->btn), 0);
             lv_obj_set_style_radius(btn_dim_minus, 2, 0);
             lv_obj_add_event_cb(btn_dim_minus, dim_minus_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_set_ext_click_area(btn_dim_minus, 2);
@@ -1369,7 +1403,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_dim_plus) {
             lv_obj_set_size(btn_dim_plus, 28, 24);
             lv_obj_set_pos(btn_dim_plus, 272, y + 3);
-            lv_obj_set_style_bg_color(btn_dim_plus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_color(btn_dim_plus, lv_color_hex(ui_theme()->btn), 0);
             lv_obj_set_style_radius(btn_dim_plus, 2, 0);
             lv_obj_add_event_cb(btn_dim_plus, dim_plus_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_set_ext_click_area(btn_dim_plus, 2);
@@ -1386,7 +1420,7 @@ lv_obj_t* ui_settings_create(void)
         if (lbl_sleep) {
             lv_label_set_text(lbl_sleep, "Light sleep");
             lv_obj_set_style_text_font(lbl_sleep, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl_sleep, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_style_text_color(lbl_sleep, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_sleep, 8, y + 6);
         }
 
@@ -1403,14 +1437,14 @@ lv_obj_t* ui_settings_create(void)
         if (lbl_auto_off) {
             lv_label_set_text(lbl_auto_off, "Auto power off");
             lv_obj_set_style_text_font(lbl_auto_off, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl_auto_off, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_style_text_color(lbl_auto_off, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_auto_off, 8, y + 6);
         }
 
         s_lbl_auto_off = lv_label_create(s_panel);
         if (s_lbl_auto_off) {
             lv_obj_set_style_text_font(s_lbl_auto_off, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_lbl_auto_off, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_style_text_color(s_lbl_auto_off, lv_color_hex(ui_theme()->text), 0);
             lv_obj_set_pos(s_lbl_auto_off, 140, y + 6);
         }
 
@@ -1418,7 +1452,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_ao_minus) {
             lv_obj_set_size(btn_ao_minus, 28, 24);
             lv_obj_set_pos(btn_ao_minus, 220, y + 3);
-            lv_obj_set_style_bg_color(btn_ao_minus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_color(btn_ao_minus, lv_color_hex(ui_theme()->btn), 0);
             lv_obj_set_style_radius(btn_ao_minus, 2, 0);
             lv_obj_add_event_cb(btn_ao_minus, auto_off_minus_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_set_ext_click_area(btn_ao_minus, 2);
@@ -1433,7 +1467,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_ao_plus) {
             lv_obj_set_size(btn_ao_plus, 28, 24);
             lv_obj_set_pos(btn_ao_plus, 272, y + 3);
-            lv_obj_set_style_bg_color(btn_ao_plus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_color(btn_ao_plus, lv_color_hex(ui_theme()->btn), 0);
             lv_obj_set_style_radius(btn_ao_plus, 2, 0);
             lv_obj_add_event_cb(btn_ao_plus, auto_off_plus_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_set_ext_click_area(btn_ao_plus, 2);
@@ -1445,12 +1479,31 @@ lv_obj_t* ui_settings_create(void)
         }
         y += ROW_H + GAP;
 
+        // Outdoor mode — high-contrast palette + raised backlight dim floor.
+        // Toggling saves to NVS and restarts the unit (palette is baked at
+        // screen creation; a reboot is the clean way to re-theme everything).
+        s_lbl_outdoor = lv_label_create(s_panel);
+        if (s_lbl_outdoor) {
+            lv_label_set_text(s_lbl_outdoor, "Outdoor mode");
+            lv_obj_set_style_text_font(s_lbl_outdoor, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_lbl_outdoor, lv_color_hex(ui_theme()->label), 0);
+            lv_obj_set_pos(s_lbl_outdoor, 8, y + 6);
+        }
+
+        s_switch_outdoor = lv_switch_create(s_panel);
+        if (s_switch_outdoor) {
+            lv_obj_set_size(s_switch_outdoor, 44, 22);
+            lv_obj_set_pos(s_switch_outdoor, 260, y + 4);
+            lv_obj_add_event_cb(s_switch_outdoor, outdoor_toggle_cb, LV_EVENT_VALUE_CHANGED, nullptr);
+        }
+        y += ROW_H + GAP;
+
         // Power off - deep sleep; wake with the BOOT button (GPIO0)
         lv_obj_t* btn_pwr = lv_btn_create(s_panel);
         if (btn_pwr) {
             lv_obj_set_size(btn_pwr, 160, 30);
             lv_obj_set_pos(btn_pwr, 80, y);
-            lv_obj_set_style_bg_color(btn_pwr, lv_color_hex(0xB71C1C), 0);
+            lv_obj_set_style_bg_color(btn_pwr, lv_color_hex(ui_theme()->btn_del), 0);
             lv_obj_set_style_radius(btn_pwr, 3, 0);
             lv_obj_add_event_cb(btn_pwr, power_off_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_t* lbl_pwr = lv_label_create(btn_pwr);
@@ -1470,7 +1523,7 @@ lv_obj_t* ui_settings_create(void)
         if (lbl_kml_title) {
             lv_label_set_text(lbl_kml_title, "Google Earth export");
             lv_obj_set_style_text_font(lbl_kml_title, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl_kml_title, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_style_text_color(lbl_kml_title, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_kml_title, 8, y + 6);
         }
         y += ROW_H + GAP;
@@ -1479,7 +1532,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_kml) {
             lv_obj_set_size(btn_kml, 148, 26);
             lv_obj_set_pos(btn_kml, 8, y + 2);
-            lv_obj_set_style_bg_color(btn_kml, lv_color_hex(0x1F4E79), 0);
+            lv_obj_set_style_bg_color(btn_kml, lv_color_hex(ui_theme()->btn_blue), 0);
             lv_obj_set_style_radius(btn_kml, 3, 0);
             lv_obj_add_event_cb(btn_kml, kml_export_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_t* lbl_btn = lv_label_create(btn_kml);
@@ -1495,7 +1548,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_rep) {
             lv_obj_set_size(btn_rep, 148, 26);
             lv_obj_set_pos(btn_rep, 164, y + 2);
-            lv_obj_set_style_bg_color(btn_rep, lv_color_hex(0x1F4E79), 0);
+            lv_obj_set_style_bg_color(btn_rep, lv_color_hex(ui_theme()->btn_blue), 0);
             lv_obj_set_style_radius(btn_rep, 3, 0);
             lv_obj_add_event_cb(btn_rep, report_export_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_t* lbl_rep = lv_label_create(btn_rep);
@@ -1512,7 +1565,7 @@ lv_obj_t* ui_settings_create(void)
         if (s_lbl_kml) {
             lv_label_set_text(s_lbl_kml, "converts last survey on SD card");
             lv_obj_set_style_text_font(s_lbl_kml, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_lbl_kml, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_style_text_color(s_lbl_kml, lv_color_hex(ui_theme()->text), 0);
             lv_obj_set_pos(s_lbl_kml, 8, y + 4);
         }
         y += ROW_H + SECTION_GAP;
@@ -1524,7 +1577,7 @@ lv_obj_t* ui_settings_create(void)
         if (lbl_fw) {
             lv_label_set_text(lbl_fw, "Firmware");
             lv_obj_set_style_text_font(lbl_fw, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(lbl_fw, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_style_text_color(lbl_fw, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_fw, 8, y + 6);
         }
         y += ROW_H + GAP;
@@ -1536,7 +1589,7 @@ lv_obj_t* ui_settings_create(void)
             snprintf(buf, sizeof(buf), "v%s", d ? d->version : "?");
             lv_label_set_text(s_lbl_version, buf);
             lv_obj_set_style_text_font(s_lbl_version, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_lbl_version, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_style_text_color(s_lbl_version, lv_color_hex(ui_theme()->text), 0);
             lv_obj_set_pos(s_lbl_version, 8, y + 6);
         }
 
@@ -1544,7 +1597,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_ota) {
             lv_obj_set_size(btn_ota, 140, 24);
             lv_obj_set_pos(btn_ota, 176, y + 3);
-            lv_obj_set_style_bg_color(btn_ota, lv_color_hex(0x2E7D32), 0);
+            lv_obj_set_style_bg_color(btn_ota, lv_color_hex(ui_theme()->btn_ok), 0);
             lv_obj_set_style_radius(btn_ota, 2, 0);
             lv_obj_add_event_cb(btn_ota, ota_open_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_t* lbl_ota = lv_label_create(btn_ota);
@@ -1564,7 +1617,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_clear) {
             lv_obj_set_size(btn_clear, 160, 30);
             lv_obj_set_pos(btn_clear, 80, y);
-            lv_obj_set_style_bg_color(btn_clear, lv_color_hex(0xB71C1C), 0);
+            lv_obj_set_style_bg_color(btn_clear, lv_color_hex(ui_theme()->btn_del), 0);
             lv_obj_set_style_radius(btn_clear, 3, 0);
             lv_obj_add_event_cb(btn_clear, clear_log_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_t* lbl_clear = lv_label_create(btn_clear);
@@ -1584,7 +1637,7 @@ lv_obj_t* ui_settings_create(void)
     if (back) {
         lv_obj_set_size(back, 80, 32);
         lv_obj_set_pos(back, 4, 4);
-        lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
+        lv_obj_set_style_bg_color(back, lv_color_hex(ui_theme()->btn), 0);
         lv_obj_set_style_radius(back, 3, 0);
         lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
         lv_obj_set_ext_click_area(back, 4);
@@ -1601,7 +1654,7 @@ lv_obj_t* ui_settings_create(void)
     if (title) {
         lv_label_set_text(title, "SETTINGS");
         lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
-        lv_obj_set_style_text_color(title, lv_color_hex(0xE8E8E8), 0);
+        lv_obj_set_style_text_color(title, lv_color_hex(ui_theme()->text), 0);
         lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
     }
 
@@ -1625,7 +1678,7 @@ lv_obj_t* ui_settings_create(void)
         if (s_modal_title) {
             lv_label_set_text(s_modal_title, "Enter target");
             lv_obj_set_style_text_font(s_modal_title, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_modal_title, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_style_text_color(s_modal_title, lv_color_hex(ui_theme()->text), 0);
             lv_obj_align(s_modal_title, LV_ALIGN_TOP_MID, 0, 6);
         }
 
@@ -1639,7 +1692,7 @@ lv_obj_t* ui_settings_create(void)
             lv_textarea_set_max_length(s_ta, 32);
             lv_obj_set_style_text_font(s_ta, &lv_font_montserrat_14, 0);
             lv_obj_set_style_text_color(s_ta, lv_color_white(), 0);
-            lv_obj_set_style_bg_color(s_ta, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_color(s_ta, lv_color_hex(ui_theme()->btn), 0);
             lv_obj_set_style_bg_opa(s_ta, LV_OPA_COVER, 0);
             lv_obj_set_style_border_width(s_ta, 0, 0);
             lv_obj_set_style_pad_all(s_ta, 4, 0);
@@ -1649,7 +1702,7 @@ lv_obj_t* ui_settings_create(void)
             if (btn_ok) {
                 lv_obj_set_size(btn_ok, 80, 18);
                 lv_obj_set_pos(btn_ok, 60, 42);
-                lv_obj_set_style_bg_color(btn_ok, lv_color_hex(0x2E7D32), 0);
+                lv_obj_set_style_bg_color(btn_ok, lv_color_hex(ui_theme()->btn_ok), 0);
                 lv_obj_set_style_radius(btn_ok, 3, 0);
                 lv_obj_add_event_cb(btn_ok, modal_ok_cb, LV_EVENT_CLICKED, nullptr);
                 lv_obj_t* lbl_ok = lv_label_create(btn_ok);
@@ -1664,7 +1717,7 @@ lv_obj_t* ui_settings_create(void)
             if (btn_cancel) {
                 lv_obj_set_size(btn_cancel, 80, 18);
                 lv_obj_set_pos(btn_cancel, 180, 42);
-                lv_obj_set_style_bg_color(btn_cancel, lv_color_hex(0xB71C1C), 0);
+                lv_obj_set_style_bg_color(btn_cancel, lv_color_hex(ui_theme()->btn_del), 0);
                 lv_obj_set_style_radius(btn_cancel, 3, 0);
                 lv_obj_add_event_cb(btn_cancel, modal_cancel_cb, LV_EVENT_CLICKED, nullptr);
                 lv_obj_t* lbl_cancel = lv_label_create(btn_cancel);
@@ -1717,7 +1770,7 @@ lv_obj_t* ui_settings_create(void)
         if (s_pick_title) {
             lv_label_set_text(s_pick_title, "Pick SSID from scan");
             lv_obj_set_style_text_font(s_pick_title, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_pick_title, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_style_text_color(s_pick_title, lv_color_hex(ui_theme()->text), 0);
             lv_obj_align(s_pick_title, LV_ALIGN_TOP_MID, 0, 8);
         }
 
@@ -1739,7 +1792,7 @@ lv_obj_t* ui_settings_create(void)
         if (s_pick_empty) {
             lv_label_set_text(s_pick_empty, "No APs found\nWait for scan...");
             lv_obj_set_style_text_font(s_pick_empty, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_pick_empty, lv_color_hex(0x757575), 0);
+            lv_obj_set_style_text_color(s_pick_empty, lv_color_hex(ui_theme()->faint), 0);
             lv_obj_set_style_text_align(s_pick_empty, LV_TEXT_ALIGN_CENTER, 0);
             lv_obj_align(s_pick_empty, LV_ALIGN_CENTER, 0, -10);
             lv_obj_add_flag(s_pick_empty, LV_OBJ_FLAG_HIDDEN);
@@ -1749,7 +1802,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_manual) {
             lv_obj_set_size(btn_manual, 120, 28);
             lv_obj_set_pos(btn_manual, 20, 200);
-            lv_obj_set_style_bg_color(btn_manual, lv_color_hex(0x2E7D32), 0);
+            lv_obj_set_style_bg_color(btn_manual, lv_color_hex(ui_theme()->btn_ok), 0);
             lv_obj_set_style_radius(btn_manual, 2, 0);
             lv_obj_add_event_cb(btn_manual, pick_manual_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_t* lbl_manual = lv_label_create(btn_manual);
@@ -1765,7 +1818,7 @@ lv_obj_t* ui_settings_create(void)
         if (btn_cancel2) {
             lv_obj_set_size(btn_cancel2, 120, 28);
             lv_obj_set_pos(btn_cancel2, 180, 200);
-            lv_obj_set_style_bg_color(btn_cancel2, lv_color_hex(0xB71C1C), 0);
+            lv_obj_set_style_bg_color(btn_cancel2, lv_color_hex(ui_theme()->btn_del), 0);
             lv_obj_set_style_radius(btn_cancel2, 2, 0);
             lv_obj_add_event_cb(btn_cancel2, pick_cancel_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_t* lbl_cancel2 = lv_label_create(btn_cancel2);
@@ -1797,7 +1850,7 @@ lv_obj_t* ui_settings_create(void)
         if (s_ota_title) {
             lv_label_set_text(s_ota_title, "Firmware files on SD");
             lv_obj_set_style_text_font(s_ota_title, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_ota_title, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_style_text_color(s_ota_title, lv_color_hex(ui_theme()->text), 0);
             lv_obj_align(s_ota_title, LV_ALIGN_TOP_MID, 0, 8);
         }
 
@@ -1816,7 +1869,7 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_width(s_ota_status, 280);
             lv_label_set_long_mode(s_ota_status, LV_LABEL_LONG_WRAP);
             lv_obj_set_style_text_font(s_ota_status, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_ota_status, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_style_text_color(s_ota_status, lv_color_hex(ui_theme()->text), 0);
             lv_obj_set_style_text_align(s_ota_status, LV_TEXT_ALIGN_CENTER, 0);
             lv_obj_set_pos(s_ota_status, 20, 118);
         }
@@ -1826,16 +1879,16 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_size(s_ota_bar, 280, 14);
             lv_obj_set_pos(s_ota_bar, 20, 150);
             lv_bar_set_range(s_ota_bar, 0, 100);
-            lv_obj_set_style_bg_color(s_ota_bar, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_bg_color(s_ota_bar, lv_color_hex(ui_theme()->btn), 0);
             lv_obj_set_style_bg_opa(s_ota_bar, LV_OPA_COVER, 0);
-            lv_obj_set_style_bg_color(s_ota_bar, lv_color_hex(0x2E7D32), LV_PART_INDICATOR);
+            lv_obj_set_style_bg_color(s_ota_bar, lv_color_hex(ui_theme()->btn_ok), LV_PART_INDICATOR);
         }
 
         s_ota_btn_flash = lv_btn_create(s_ota_modal);
         if (s_ota_btn_flash) {
             lv_obj_set_size(s_ota_btn_flash, 130, 28);
             lv_obj_set_pos(s_ota_btn_flash, 20, 200);
-            lv_obj_set_style_bg_color(s_ota_btn_flash, lv_color_hex(0x2E7D32), 0);
+            lv_obj_set_style_bg_color(s_ota_btn_flash, lv_color_hex(ui_theme()->btn_ok), 0);
             lv_obj_set_style_radius(s_ota_btn_flash, 2, 0);
             lv_obj_add_event_cb(s_ota_btn_flash, ota_flash_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_t* lbl_flash = lv_label_create(s_ota_btn_flash);
@@ -1851,7 +1904,7 @@ lv_obj_t* ui_settings_create(void)
         if (s_ota_btn_cancel) {
             lv_obj_set_size(s_ota_btn_cancel, 130, 28);
             lv_obj_set_pos(s_ota_btn_cancel, 170, 200);
-            lv_obj_set_style_bg_color(s_ota_btn_cancel, lv_color_hex(0xB71C1C), 0);
+            lv_obj_set_style_bg_color(s_ota_btn_cancel, lv_color_hex(ui_theme()->btn_del), 0);
             lv_obj_set_style_radius(s_ota_btn_cancel, 2, 0);
             lv_obj_add_event_cb(s_ota_btn_cancel, ota_cancel_cb, LV_EVENT_CLICKED, nullptr);
             lv_obj_t* lbl_ocancel = lv_label_create(s_ota_btn_cancel);

@@ -7,6 +7,7 @@
 #include "ui_gps.h"
 #include "ui_alerts.h"
 #include "ui_settings.h"
+#include "ui_theme.h"
 
 static lv_obj_t* s_home;
 static lv_obj_t* s_wifi_scr;
@@ -188,7 +189,7 @@ lv_obj_t* ui_home_create(void)
     lv_label_set_text(title, "SiteSurvey Pro");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_22, 0);
     lv_obj_set_style_text_color(title, lv_color_white(), 0);
-    lv_obj_set_style_text_outline_stroke_color(title, lv_color_hex(0x00E5FF), 0);
+    lv_obj_set_style_text_outline_stroke_color(title, THM_ACCENT, 0);
     lv_obj_set_style_text_outline_stroke_width(title, 2, 0);
     lv_obj_set_style_text_outline_stroke_opa(title, LV_OPA_60, 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 6);

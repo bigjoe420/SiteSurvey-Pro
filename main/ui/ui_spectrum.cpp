@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "scan_engine.h"
 #include "ui_home.h"
+#include "ui_theme.h"
 
 // -----------------------------------------------------------------------------
 // Channel maps
@@ -34,22 +35,15 @@ static constexpr int N_5G = sizeof(CH_5G) / sizeof(CH_5G[0]);
 #define BAR_W_5G    16
 
 // -----------------------------------------------------------------------------
-// Tier colours (match ui_wifi.cpp)
+// Tier colours (match ui_wifi.cpp) — resolved through the theme at use time
 // -----------------------------------------------------------------------------
-
-static const lv_color_t TIER_COLORS[] = {
-    lv_color_hex(0x4CAF50), // Strong   >= -50
-    lv_color_hex(0xFFEB3B), // Moderate -50..-70
-    lv_color_hex(0xFF9800), // Weak     -70..-85
-    lv_color_hex(0xF44336), // Marginal < -85
-};
 
 static lv_color_t tier_color(int8_t rssi)
 {
-    if (rssi >= SSP_RSSI_STRONG_DBM)   return TIER_COLORS[0];
-    if (rssi >= SSP_RSSI_MODERATE_DBM) return TIER_COLORS[1];
-    if (rssi >= SSP_RSSI_WEAK_DBM)     return TIER_COLORS[2];
-    return TIER_COLORS[3];
+    if (rssi >= SSP_RSSI_STRONG_DBM)   return ui_theme_tier_color(SSP_RSSI_STRONG);
+    if (rssi >= SSP_RSSI_MODERATE_DBM) return ui_theme_tier_color(SSP_RSSI_MODERATE);
+    if (rssi >= SSP_RSSI_WEAK_DBM)     return ui_theme_tier_color(SSP_RSSI_WEAK);
+    return ui_theme_tier_color(SSP_RSSI_MARGINAL);
 }
 
 // -----------------------------------------------------------------------------
@@ -96,7 +90,7 @@ static void build_bar_row(lv_obj_t* scr, ChBar* bars, int n,
     lv_obj_remove_flag(track, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(track, SCR_W, TRACK_H);
     lv_obj_set_pos(track, 0, track_y);
-    lv_obj_set_style_bg_color(track, lv_color_hex(0x1E1E1E), 0);
+    lv_obj_set_style_bg_color(track, lv_color_hex(ui_theme()->track), 0);
     lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(track, 0, 0);
     lv_obj_set_style_pad_all(track, 0, 0);
@@ -109,12 +103,12 @@ static void build_bar_row(lv_obj_t* scr, ChBar* bars, int n,
         lv_bar_set_range(b, -100, -25);
         lv_obj_set_size(b, bar_w, TRACK_H);
         lv_obj_set_pos(b, x, 0);
-        lv_obj_set_style_bg_color(b, lv_color_hex(0x1E1E1E), LV_PART_MAIN);
+        lv_obj_set_style_bg_color(b, lv_color_hex(ui_theme()->track), LV_PART_MAIN);
         lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_PART_MAIN);
         lv_obj_set_style_radius(b, 1, LV_PART_MAIN);
         // Indicator starts invisible (value at minimum)
         lv_bar_set_value(b, -100, LV_ANIM_OFF);
-        lv_obj_set_style_bg_color(b, lv_color_hex(0x333333), LV_PART_INDICATOR);
+        lv_obj_set_style_bg_color(b, lv_color_hex(ui_theme()->btn), LV_PART_INDICATOR);
         lv_obj_set_style_bg_opa(b, LV_OPA_COVER, LV_PART_INDICATOR);
         lv_obj_set_style_radius(b, 1, LV_PART_INDICATOR);
 
@@ -129,7 +123,7 @@ static void build_bar_row(lv_obj_t* scr, ChBar* bars, int n,
             char buf[4];
             snprintf(buf, sizeof(buf), "%u", channels[i]);
             lv_label_set_text(lbl, buf);
-            lv_obj_set_style_text_color(lbl, lv_color_hex(0x9E9E9E), 0);
+            lv_obj_set_style_text_color(lbl, lv_color_hex(ui_theme()->faint), 0);
             lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
             // Approximate centre; LVGL will centre the text on the label's x
             lv_obj_set_pos(lbl, i * slot_w + slot_w / 2 - 8, track_y + TRACK_H + 2);
@@ -204,7 +198,7 @@ static void do_refresh(void)
                 cb->was_active = false;
                 cb->shown_rssi = -128;
                 lv_bar_set_value(cb->bar, -100, LV_ANIM_OFF);
-                lv_obj_set_style_bg_color(cb->bar, lv_color_hex(0x333333), LV_PART_INDICATOR);
+                lv_obj_set_style_bg_color(cb->bar, lv_color_hex(ui_theme()->btn), LV_PART_INDICATOR);
             }
         }
     }
@@ -224,7 +218,7 @@ static void do_refresh(void)
                 cb->was_active = false;
                 cb->shown_rssi = -128;
                 lv_bar_set_value(cb->bar, -100, LV_ANIM_OFF);
-                lv_obj_set_style_bg_color(cb->bar, lv_color_hex(0x333333), LV_PART_INDICATOR);
+                lv_obj_set_style_bg_color(cb->bar, lv_color_hex(ui_theme()->btn), LV_PART_INDICATOR);
             }
         }
     }
@@ -287,7 +281,7 @@ lv_obj_t* ui_spectrum_create(void)
     lv_obj_t* back = lv_btn_create(scr);
     lv_obj_set_size(back, 80, 32);
     lv_obj_set_pos(back, 4, 4);
-    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_bg_color(back, lv_color_hex(ui_theme()->btn), 0);
     lv_obj_set_style_radius(back, 3, 0);
 
     lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
@@ -311,7 +305,7 @@ lv_obj_t* ui_spectrum_create(void)
     // 2.4 GHz label
     lv_obj_t* lbl_2g = lv_label_create(scr);
     lv_label_set_text(lbl_2g, "2.4 GHz");
-    lv_obj_set_style_text_color(lbl_2g, lv_color_hex(0xE8E8E8), 0);
+    lv_obj_set_style_text_color(lbl_2g, lv_color_hex(ui_theme()->text), 0);
     lv_obj_set_pos(lbl_2g, 8, 54);
 
     build_bar_row(scr, s_2g, N_2G, CH_2G, SLOT_W_2G, BAR_W_2G, TRACK_Y_2G, false);
@@ -319,7 +313,7 @@ lv_obj_t* ui_spectrum_create(void)
     // 5 GHz label
     lv_obj_t* lbl_5g = lv_label_create(scr);
     lv_label_set_text(lbl_5g, "5 GHz");
-    lv_obj_set_style_text_color(lbl_5g, lv_color_hex(0xE8E8E8), 0);
+    lv_obj_set_style_text_color(lbl_5g, lv_color_hex(ui_theme()->text), 0);
     lv_obj_set_pos(lbl_5g, 8, 136);
 
     build_bar_row(scr, s_5g, N_5G, CH_5G, SLOT_W_5G, BAR_W_5G, TRACK_Y_5G, true);
@@ -327,7 +321,7 @@ lv_obj_t* ui_spectrum_create(void)
     // Footer
     s_total_lbl = lv_label_create(scr);
     lv_label_set_text(s_total_lbl, "Scanning...");
-    lv_obj_set_style_text_color(s_total_lbl, lv_color_hex(0x9E9E9E), 0);
+    lv_obj_set_style_text_color(s_total_lbl, lv_color_hex(ui_theme()->faint), 0);
     lv_obj_set_pos(s_total_lbl, 8, 210);
     s_footer[0] = '\0';
 

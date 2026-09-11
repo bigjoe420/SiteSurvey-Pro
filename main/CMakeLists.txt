@@ -15,6 +15,7 @@ idf_component_register(
          "ui/ui_spin3d.cpp"
          "ui/ui_calib.cpp"
          "ui/ui_splash.cpp"
+         "ui/ui_theme.cpp"
          "scan_engine/scan_engine.cpp"
          "ble/scan_ble.cpp"
          "sensors/bme680.cpp"

@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "scan_ble.h"
 #include "ui_home.h"
+#include "ui_theme.h"
 
 #define MAX_ROWS 8
 
@@ -34,10 +35,8 @@ static bool      s_rows_built;
 static lv_timer_t* s_timer;
 static lv_obj_t* s_status_lbl;
 
-static const lv_color_t TIER_COLORS[] = {
-    lv_color_hex(0x4CAF50), lv_color_hex(0xFFEB3B),
-    lv_color_hex(0xFF9800), lv_color_hex(0xF44336),
-};
+// RSSI tier colors resolve through ui_theme_tier_color() at use time so the
+// outdoor palette gets its brighter tiers.
 
 #define ROW_H       30
 #define ROW_STRIDE  32
@@ -63,14 +62,14 @@ static void build_row(lv_obj_t* parent, Row* r, int idx)
     lv_obj_set_style_bg_opa(r->row, LV_OPA_COVER, 0);
     lv_obj_set_style_border_side(r->row, LV_BORDER_SIDE_BOTTOM, 0);
     lv_obj_set_style_border_width(r->row, 1, 0);
-    lv_obj_set_style_border_color(r->row, lv_color_hex(0x222222), 0);
+    lv_obj_set_style_border_color(r->row, lv_color_hex(ui_theme()->border), 0);
     lv_obj_set_style_pad_all(r->row, 2, 0);
 
     r->bar = lv_bar_create(r->row);
     lv_bar_set_range(r->bar, -100, -25);
     lv_obj_set_size(r->bar, COL_BAR_W, 10);
     lv_obj_set_pos(r->bar, COL_BAR_X, (ROW_H - 10) / 2);
-    lv_obj_set_style_bg_color(r->bar, lv_color_hex(0x1E1E1E), LV_PART_MAIN);
+    lv_obj_set_style_bg_color(r->bar, lv_color_hex(ui_theme()->track), LV_PART_MAIN);
     lv_obj_set_style_bg_opa(r->bar, LV_OPA_COVER, LV_PART_MAIN);
 
     r->name = lv_label_create(r->row);
@@ -82,7 +81,7 @@ static void build_row(lv_obj_t* parent, Row* r, int idx)
     r->info = lv_label_create(r->row);
     lv_obj_set_size(r->info, COL_INFO_W, LV_SIZE_CONTENT);
     lv_label_set_long_mode(r->info, LV_LABEL_LONG_CLIP);
-    lv_obj_set_style_text_color(r->info, lv_color_hex(0xE8E8E8), 0);
+    lv_obj_set_style_text_color(r->info, lv_color_hex(ui_theme()->text), 0);
     lv_obj_set_style_text_align(r->info, LV_TEXT_ALIGN_RIGHT, 0);
     lv_obj_set_pos(r->info, COL_INFO_X, (ROW_H - lv_font_get_line_height(&lv_font_montserrat_14)) / 2);
 }
@@ -110,12 +109,12 @@ static void update_status(int n)
     if (!s_status_lbl) return;
     if (n == 0) {
         lv_label_set_text(s_status_lbl, "Scanning...");
-        lv_obj_set_style_text_color(s_status_lbl, lv_color_hex(0x757575), 0);
+        lv_obj_set_style_text_color(s_status_lbl, lv_color_hex(ui_theme()->faint), 0);
     } else {
         char buf[32];
         snprintf(buf, sizeof(buf), "%d device%s found", n, n == 1 ? "" : "s");
         lv_label_set_text(s_status_lbl, buf);
-        lv_obj_set_style_text_color(s_status_lbl, lv_color_hex(0xB0B0B0), 0);
+        lv_obj_set_style_text_color(s_status_lbl, lv_color_hex(ui_theme()->label), 0);
     }
 }
 
@@ -177,7 +176,7 @@ static void do_refresh(void)
         }
         if (dev->rssi != st->rssi) {
             st->rssi = dev->rssi;
-            lv_color_t c = TIER_COLORS[dev->severity];
+            lv_color_t c = ui_theme_tier_color(dev->severity);
             lv_bar_set_value(r->bar, dev->rssi, LV_ANIM_OFF);
             lv_obj_set_style_bg_color(r->bar, c, LV_PART_INDICATOR);
             lv_obj_set_style_text_color(r->name, c, 0);
@@ -251,7 +250,7 @@ lv_obj_t* ui_ble_create(void)
     lv_obj_t* back = lv_btn_create(scr);
     lv_obj_set_size(back, 80, 32);
     lv_obj_set_pos(back, 4, 4);
-    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_bg_color(back, lv_color_hex(ui_theme()->btn), 0);
     lv_obj_set_style_radius(back, 3, 0);
     lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
     // ext_click_area 32 (was 24): retest capture 2026-08-31 showed 70/70
@@ -269,7 +268,7 @@ lv_obj_t* ui_ble_create(void)
     // Status label below title — shows device count or "Scanning..."
     s_status_lbl = lv_label_create(scr);
     lv_label_set_text(s_status_lbl, "Scanning...");
-    lv_obj_set_style_text_color(s_status_lbl, lv_color_hex(0x757575), 0);
+    lv_obj_set_style_text_color(s_status_lbl, lv_color_hex(ui_theme()->faint), 0);
     lv_obj_set_style_text_font(s_status_lbl, &lv_font_montserrat_14, 0);
     lv_obj_align(s_status_lbl, LV_ALIGN_TOP_MID, 0, 36);
 
