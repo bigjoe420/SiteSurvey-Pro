@@ -9,6 +9,7 @@
 #include "esp_log.h"
 #include "ui_home.h"
 #include "ota_update.h"
+#include "kml_export.h"
 #include "esp_heap_caps.h"
 #include "esp_app_desc.h"
 #include "freertos/FreeRTOS.h"
@@ -65,6 +66,7 @@ static int s_pick_count;
 
 // Firmware update UI
 static lv_obj_t* s_lbl_version;
+static lv_obj_t* s_lbl_kml = nullptr;
 static lv_obj_t* s_ota_modal;
 static lv_obj_t* s_ota_title;
 static lv_obj_t* s_ota_list;
@@ -245,6 +247,27 @@ static void power_off_cb(lv_event_t* e)
     lv_obj_clear_flag(btn, LV_OBJ_FLAG_CLICKABLE);  // ignore repeat taps
     lv_timer_create(power_off_timer_cb, 1500, nullptr);
 }
+static void kml_export_cb(lv_event_t*)
+{
+    if (!s_lbl_kml) return;
+    char path[128];
+    int placemarks = 0, nofix = 0;
+    esp_err_t err = kml_export_latest(path, sizeof(path), &placemarks, &nofix);
+    if (err == ESP_ERR_NOT_FOUND) {
+        lv_label_set_text(s_lbl_kml, "KML: no session file / no SD");
+        return;
+    }
+    if (err != ESP_OK) {
+        lv_label_set_text(s_lbl_kml, "KML export failed");
+        return;
+    }
+    char buf[48];
+    snprintf(buf, sizeof(buf), "KML: %d APs%s", placemarks,
+             nofix ? " (no GPS)" : "");
+    lv_label_set_text(s_lbl_kml, buf);
+    (void)path;
+}
+
 
 // --- Scan filter callbacks ---
 static void refresh_filter_labels(void)
@@ -1338,6 +1361,43 @@ lv_obj_t* ui_settings_create(void)
             }
         }
         y += 30 + SECTION_GAP;
+    }
+
+    // --- Data export ---
+    if (s_panel) {
+        lv_obj_t* lbl_kml_title = lv_label_create(s_panel);
+        if (lbl_kml_title) {
+            lv_label_set_text(lbl_kml_title, "Google Earth export");
+            lv_obj_set_style_text_font(lbl_kml_title, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(lbl_kml_title, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_pos(lbl_kml_title, 8, y + 6);
+        }
+        y += ROW_H + GAP;
+
+        lv_obj_t* btn_kml = lv_btn_create(s_panel);
+        if (btn_kml) {
+            lv_obj_set_size(btn_kml, 160, 26);
+            lv_obj_set_pos(btn_kml, 8, y + 2);
+            lv_obj_set_style_bg_color(btn_kml, lv_color_hex(0x1F4E79), 0);
+            lv_obj_set_style_radius(btn_kml, 3, 0);
+            lv_obj_add_event_cb(btn_kml, kml_export_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_t* lbl_btn = lv_label_create(btn_kml);
+            if (lbl_btn) {
+                lv_label_set_text(lbl_btn, "Export KML");
+                lv_obj_set_style_text_font(lbl_btn, &lv_font_montserrat_14, 0);
+                lv_obj_set_style_text_color(lbl_btn, lv_color_white(), 0);
+                lv_obj_center(lbl_btn);
+            }
+        }
+
+        s_lbl_kml = lv_label_create(s_panel);
+        if (s_lbl_kml) {
+            lv_label_set_text(s_lbl_kml, "converts last survey to /sdcard");
+            lv_obj_set_style_text_font(s_lbl_kml, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_lbl_kml, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_pos(s_lbl_kml, 176, y + 8);
+        }
+        y += ROW_H + SECTION_GAP;
     }
 
     // --- Firmware ---
