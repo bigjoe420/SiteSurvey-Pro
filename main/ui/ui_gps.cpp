@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "ui_home.h"
+#include "ui_theme.h"
 
 // ---------------------------------------------------------------------------
 // State
@@ -72,13 +73,13 @@ static const char* fix_str(uint8_t q)
 static lv_color_t fix_color(uint8_t q)
 {
     switch (q) {
-        case 0:  return lv_color_hex(0xF44336); // red — no fix
-        case 1:  return lv_color_hex(0x4CAF50); // green — GPS
-        case 2:  return lv_color_hex(0x8BC34A); // light green — DGPS
-        case 3:  return lv_color_hex(0x00E676); // bright green — PPS
+        case 0:  return THM_BAD;     // red — no fix
+        case 1:  return THM_OK;      // green — GPS
+        case 2:  return THM_OK_MID;  // light green — DGPS
+        case 3:  return THM_OK_HI;   // bright green — PPS
         case 4:
-        case 5:  return lv_color_hex(0x00BCD4); // cyan — RTK
-        default: return lv_color_hex(0xFFC107); // yellow — other
+        case 5:  return THM_CYAN;    // cyan — RTK
+        default: return THM_WARN;    // yellow — other
     }
 }
 
@@ -97,15 +98,15 @@ static void gps_refresh(lv_timer_t*)
 
     if (!have) {
         lv_label_set_text(s_fix_label, "WAITING");
-        lv_obj_set_style_text_color(s_fix_label, lv_color_hex(0xFFC107), 0);
-        lv_obj_set_style_bg_color(s_fix_indicator, lv_color_hex(0xFFC107), 0);
+        lv_obj_set_style_text_color(s_fix_label, THM_WARN, 0);
+        lv_obj_set_style_bg_color(s_fix_indicator, THM_WARN, 0);
         lv_label_set_text(s_lat_label, "Lat: --");
         lv_label_set_text(s_lon_label, "Lon: --");
         lv_label_set_text(s_sats_label, "Sats: --");
         lv_label_set_text(s_utc_label,  "UTC: --");
         lv_label_set_text(s_nmea_label, "NMEA: --");
         lv_label_set_text(s_module_label, "MODULE: waiting for data...");
-        lv_obj_set_style_text_color(s_module_label, lv_color_hex(0xFFC107), 0);
+        lv_obj_set_style_text_color(s_module_label, THM_WARN, 0);
         return;
     }
 
@@ -114,14 +115,14 @@ static void gps_refresh(lv_timer_t*)
     if (!s_rx_seen) {
         lv_label_set_text(s_module_label,
                           "MODULE: SILENT - no bytes (check power/LED)");
-        lv_obj_set_style_text_color(s_module_label, lv_color_hex(0xF44336), 0);
+        lv_obj_set_style_text_color(s_module_label, THM_BAD, 0);
     } else if (state.rx_bytes != s_last_rx) {
         lv_label_set_text(s_module_label, "MODULE: ALIVE - NMEA streaming");
-        lv_obj_set_style_text_color(s_module_label, lv_color_hex(0x4CAF50), 0);
+        lv_obj_set_style_text_color(s_module_label, THM_OK, 0);
     } else {
         lv_label_set_text(s_module_label,
                           "MODULE: STALLED - bytes stopped (check wiring)");
-        lv_obj_set_style_text_color(s_module_label, lv_color_hex(0xFFC107), 0);
+        lv_obj_set_style_text_color(s_module_label, THM_WARN, 0);
     }
     s_last_rx = state.rx_bytes;
 
@@ -175,7 +176,7 @@ lv_obj_t* ui_gps_create(void)
     lv_obj_t* back = lv_btn_create(scr);
     lv_obj_set_size(back, 80, 32);
     lv_obj_set_pos(back, 4, 4);
-    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_bg_color(back, lv_color_hex(ui_theme()->btn), 0);
     lv_obj_set_style_radius(back, 3, 0);
     lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
     lv_obj_set_ext_click_area(back, 32);
@@ -188,7 +189,7 @@ lv_obj_t* ui_gps_create(void)
     lv_obj_t* title = lv_label_create(scr);
     lv_label_set_text(title, "GPS STATUS");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(title, lv_color_hex(0xE8E8E8), 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(ui_theme()->text), 0);
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 12);
 
     // Fix quality indicator (colored circle)
@@ -196,7 +197,7 @@ lv_obj_t* ui_gps_create(void)
     lv_obj_remove_flag(s_fix_indicator, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(s_fix_indicator, 16, 16);
     lv_obj_set_pos(s_fix_indicator, 24, 56);
-    lv_obj_set_style_bg_color(s_fix_indicator, lv_color_hex(0x757575), 0);
+    lv_obj_set_style_bg_color(s_fix_indicator, lv_color_hex(ui_theme()->faint), 0);
     lv_obj_set_style_bg_opa(s_fix_indicator, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(s_fix_indicator, 0, 0);
     lv_obj_set_style_radius(s_fix_indicator, LV_RADIUS_CIRCLE, 0);
@@ -204,47 +205,47 @@ lv_obj_t* ui_gps_create(void)
     s_fix_label = lv_label_create(scr);
     lv_label_set_text(s_fix_label, "WAITING");
     lv_obj_set_style_text_font(s_fix_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(s_fix_label, lv_color_hex(0xFFC107), 0);
+    lv_obj_set_style_text_color(s_fix_label, THM_WARN, 0);
     lv_obj_set_pos(s_fix_label, 48, 52);
 
     // Lat / Lon
     s_lat_label = lv_label_create(scr);
     lv_label_set_text(s_lat_label, "Lat: --");
     lv_obj_set_style_text_font(s_lat_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(s_lat_label, lv_color_hex(0xE8E8E8), 0);
+    lv_obj_set_style_text_color(s_lat_label, lv_color_hex(ui_theme()->text), 0);
     lv_obj_set_pos(s_lat_label, 24, 88);
 
     s_lon_label = lv_label_create(scr);
     lv_label_set_text(s_lon_label, "Lon: --");
     lv_obj_set_style_text_font(s_lon_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(s_lon_label, lv_color_hex(0xE8E8E8), 0);
+    lv_obj_set_style_text_color(s_lon_label, lv_color_hex(ui_theme()->text), 0);
     lv_obj_set_pos(s_lon_label, 24, 112);
 
     // Sats + UTC
     s_sats_label = lv_label_create(scr);
     lv_label_set_text(s_sats_label, "Sats: --");
     lv_obj_set_style_text_font(s_sats_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(s_sats_label, lv_color_hex(0xB0B0B0), 0);
+    lv_obj_set_style_text_color(s_sats_label, lv_color_hex(ui_theme()->label), 0);
     lv_obj_set_pos(s_sats_label, 24, 144);
 
     s_utc_label = lv_label_create(scr);
     lv_label_set_text(s_utc_label, "UTC: --");
     lv_obj_set_style_text_font(s_utc_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(s_utc_label, lv_color_hex(0xB0B0B0), 0);
+    lv_obj_set_style_text_color(s_utc_label, lv_color_hex(ui_theme()->label), 0);
     lv_obj_set_pos(s_utc_label, 24, 168);
 
     // NMEA diagnostics (small, bottom)
     s_nmea_label = lv_label_create(scr);
     lv_label_set_text(s_nmea_label, "NMEA: --");
     lv_obj_set_style_text_font(s_nmea_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(s_nmea_label, lv_color_hex(0x757575), 0);
+    lv_obj_set_style_text_color(s_nmea_label, lv_color_hex(ui_theme()->faint), 0);
     lv_obj_set_pos(s_nmea_label, 24, 200);
 
     // Module health verdict line — bench test for a dead/silent GPS module
     s_module_label = lv_label_create(scr);
     lv_label_set_text(s_module_label, "MODULE: waiting for data...");
     lv_obj_set_style_text_font(s_module_label, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(s_module_label, lv_color_hex(0xFFC107), 0);
+    lv_obj_set_style_text_color(s_module_label, THM_WARN, 0);
     lv_obj_set_pos(s_module_label, 24, 222);
 
     // Fresh liveness baseline each time the screen is built

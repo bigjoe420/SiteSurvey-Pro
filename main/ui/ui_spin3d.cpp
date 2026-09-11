@@ -1,4 +1,5 @@
 #include "ui_spin3d.h"
+#include "ui_theme.h"
 
 #include <cmath>
 #include <cstring>
@@ -163,7 +164,7 @@ Spin3D* ui_spin3d_create(lv_obj_t* parent, int x, int y, int size, spin3d_shape_
     s->shape = &SHAPES[shape];
     s->angle = 0.0f;
     s->speed = 0.02f;
-    s->color = lv_color_hex(0x757575);
+    s->color = THM_FAINT;
     build_edges(s);
 
     s->canvas = lv_canvas_create(parent);
