@@ -28,12 +28,14 @@ static const char* TAG = "power_mgr";
 #define DEFAULT_TIMEOUT_S   30
 #define DEFAULT_DIM_PCT     25
 #define DEFAULT_SLEEP_EN    false
+#define DEFAULT_AUTOOFF_MIN 0
 
 // State
 static volatile ssp_pm_bl_state_t s_bl_state = SSP_PM_BL_FULL;
 static uint8_t  s_dim_pct     = DEFAULT_DIM_PCT;
 static uint16_t s_timeout_s   = DEFAULT_TIMEOUT_S;
 static bool     s_sleep_en    = DEFAULT_SLEEP_EN;
+static uint16_t s_auto_off_min = DEFAULT_AUTOOFF_MIN;
 static uint32_t s_last_activity_ms = 0;
 static bool     s_initialized = false;
 
@@ -45,23 +47,27 @@ static TimerHandle_t s_idle_timer;
 // ---------------------------------------------------------------------------
 static void nvs_load(void)
 {
-    s_timeout_s = DEFAULT_TIMEOUT_S;
-    s_dim_pct   = DEFAULT_DIM_PCT;
-    s_sleep_en  = DEFAULT_SLEEP_EN;
+    s_timeout_s    = DEFAULT_TIMEOUT_S;
+    s_dim_pct      = DEFAULT_DIM_PCT;
+    s_sleep_en     = DEFAULT_SLEEP_EN;
+    s_auto_off_min = DEFAULT_AUTOOFF_MIN;
 
     if (s_nvs == 0) return;
 
     int32_t t = DEFAULT_TIMEOUT_S;
     int32_t d = DEFAULT_DIM_PCT;
     uint8_t e = DEFAULT_SLEEP_EN ? 1 : 0;
+    int32_t a = DEFAULT_AUTOOFF_MIN;
 
     nvs_get_i32(s_nvs, SSP_PM_NVS_KEY_TIMEOUT, &t);
     nvs_get_i32(s_nvs, SSP_PM_NVS_KEY_DIM, &d);
     nvs_get_u8 (s_nvs, SSP_PM_NVS_KEY_SLEEP, &e);
+    nvs_get_i32(s_nvs, SSP_PM_NVS_KEY_AUTOOFF, &a);
 
-    s_timeout_s = (uint16_t)t;
-    s_dim_pct   = (uint8_t) d;
-    s_sleep_en  = (e != 0);
+    s_timeout_s    = (uint16_t)t;
+    s_dim_pct      = (uint8_t) d;
+    s_sleep_en     = (e != 0);
+    s_auto_off_min = (uint16_t)a;
 }
 
 static void nvs_save_now(void)
@@ -70,6 +76,7 @@ static void nvs_save_now(void)
     nvs_set_i32(s_nvs, SSP_PM_NVS_KEY_TIMEOUT, (int32_t)s_timeout_s);
     nvs_set_i32(s_nvs, SSP_PM_NVS_KEY_DIM,     (int32_t)s_dim_pct);
     nvs_set_u8 (s_nvs, SSP_PM_NVS_KEY_SLEEP,   s_sleep_en ? 1 : 0);
+    nvs_set_i32(s_nvs, SSP_PM_NVS_KEY_AUTOOFF, (int32_t)s_auto_off_min);
     nvs_commit(s_nvs);
 }
 
@@ -104,9 +111,19 @@ static void bl_apply(uint8_t pct)
 // ---------------------------------------------------------------------------
 static void idle_timer_cb(TimerHandle_t)
 {
+    uint32_t idle_ms = pdTICKS_TO_MS(xTaskGetTickCount()) - s_last_activity_ms;
+
+    // Auto power-off (opt-in): deep sleep after the configured idle time.
+    // Checked first — it supersedes backlight states.
+    if (s_auto_off_min > 0 &&
+        idle_ms >= (uint32_t)s_auto_off_min * 60U * 1000U) {
+        ESP_LOGI(TAG, "idle %u min → auto power off", s_auto_off_min);
+        power_mgr_power_off();  // never returns
+        return;
+    }
+
     if (s_timeout_s == 0) return;   // auto-dim disabled
 
-    uint32_t idle_ms = pdTICKS_TO_MS(xTaskGetTickCount()) - s_last_activity_ms;
     uint32_t timeout_ms = s_timeout_s * 1000U;
 
     if (s_bl_state == SSP_PM_BL_FULL && idle_ms >= timeout_ms) {
@@ -223,6 +240,14 @@ void power_mgr_set_sleep_en(bool en)
 {
     s_sleep_en = en;
     nvs_save();
+}
+
+uint16_t power_mgr_get_auto_off_min(void) { return s_auto_off_min; }
+void power_mgr_set_auto_off_min(uint16_t minutes)
+{
+    s_auto_off_min = minutes;
+    nvs_save();
+    s_last_activity_ms = pdTICKS_TO_MS(xTaskGetTickCount());
 }
 
 void power_mgr_power_off(void)

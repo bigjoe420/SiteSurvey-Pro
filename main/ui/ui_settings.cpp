@@ -40,6 +40,7 @@ static lv_obj_t* s_lbl_bssid_header;
 // Power settings widgets
 static lv_obj_t* s_lbl_timeout;
 static lv_obj_t* s_lbl_dim;
+static lv_obj_t* s_lbl_auto_off;
 static lv_obj_t* s_switch_sleep;
 
 // Scan filter widgets
@@ -154,6 +155,8 @@ static void refresh_bssid_list(void)
 // --- Power helpers ---
 static const uint16_t TIMEOUT_PRESETS[] = {0, 10, 30, 60, 120, 300};
 static const int TIMEOUT_COUNT = 6;
+static const uint16_t AUTOOFF_PRESETS[] = {0, 15, 30, 60, 120};
+static const int AUTOOFF_COUNT = 5;
 
 static void refresh_power_labels(void)
 {
@@ -170,6 +173,14 @@ static void refresh_power_labels(void)
         char buf[16];
         snprintf(buf, sizeof(buf), "%u%%", d);
         lv_label_set_text(s_lbl_dim, buf);
+    }
+    if (s_lbl_auto_off) {
+        uint16_t m = power_mgr_get_auto_off_min();
+        char buf[16];
+        if (m == 0) snprintf(buf, sizeof(buf), "Off");
+        else if (m < 60) snprintf(buf, sizeof(buf), "%um", m);
+        else snprintf(buf, sizeof(buf), "%uh", m / 60);
+        lv_label_set_text(s_lbl_auto_off, buf);
     }
     if (s_switch_sleep) {
         if (power_mgr_get_sleep_en()) {
@@ -224,6 +235,28 @@ static void sleep_toggle_cb(lv_event_t* e)
 {
     lv_obj_t* sw = (lv_obj_t*)lv_event_get_target(e);
     power_mgr_set_sleep_en(lv_obj_has_state(sw, LV_STATE_CHECKED));
+}
+
+static void auto_off_minus_cb(lv_event_t*)
+{
+    uint16_t m = power_mgr_get_auto_off_min();
+    int idx = 0;
+    for (int i = AUTOOFF_COUNT - 1; i >= 0; i--) {
+        if (AUTOOFF_PRESETS[i] < m) { idx = i; break; }
+    }
+    power_mgr_set_auto_off_min(AUTOOFF_PRESETS[idx]);
+    refresh_power_labels();
+}
+
+static void auto_off_plus_cb(lv_event_t*)
+{
+    uint16_t m = power_mgr_get_auto_off_min();
+    int idx = AUTOOFF_COUNT - 1;
+    for (int i = 0; i < AUTOOFF_COUNT; i++) {
+        if (AUTOOFF_PRESETS[i] > m) { idx = i; break; }
+    }
+    power_mgr_set_auto_off_min(AUTOOFF_PRESETS[idx]);
+    refresh_power_labels();
 }
 
 // One-shot LVGL timer: shows the wake hint for ~1.5s (the label gets
@@ -1362,6 +1395,53 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_size(s_switch_sleep, 44, 22);
             lv_obj_set_pos(s_switch_sleep, 260, y + 4);
             lv_obj_add_event_cb(s_switch_sleep, sleep_toggle_cb, LV_EVENT_VALUE_CHANGED, nullptr);
+        }
+        y += ROW_H + GAP;
+
+        // Auto power off — deep sleep after this much touch-idle (0 = off)
+        lv_obj_t* lbl_auto_off = lv_label_create(s_panel);
+        if (lbl_auto_off) {
+            lv_label_set_text(lbl_auto_off, "Auto power off");
+            lv_obj_set_style_text_font(lbl_auto_off, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(lbl_auto_off, lv_color_hex(0xB0B0B0), 0);
+            lv_obj_set_pos(lbl_auto_off, 8, y + 6);
+        }
+
+        s_lbl_auto_off = lv_label_create(s_panel);
+        if (s_lbl_auto_off) {
+            lv_obj_set_style_text_font(s_lbl_auto_off, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_lbl_auto_off, lv_color_hex(0xE8E8E8), 0);
+            lv_obj_set_pos(s_lbl_auto_off, 140, y + 6);
+        }
+
+        lv_obj_t* btn_ao_minus = lv_btn_create(s_panel);
+        if (btn_ao_minus) {
+            lv_obj_set_size(btn_ao_minus, 28, 24);
+            lv_obj_set_pos(btn_ao_minus, 220, y + 3);
+            lv_obj_set_style_bg_color(btn_ao_minus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_radius(btn_ao_minus, 2, 0);
+            lv_obj_add_event_cb(btn_ao_minus, auto_off_minus_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_set_ext_click_area(btn_ao_minus, 2);
+            lv_obj_t* lbl_ao_minus = lv_label_create(btn_ao_minus);
+            if (lbl_ao_minus) {
+                lv_label_set_text(lbl_ao_minus, "-");
+                lv_obj_center(lbl_ao_minus);
+            }
+        }
+
+        lv_obj_t* btn_ao_plus = lv_btn_create(s_panel);
+        if (btn_ao_plus) {
+            lv_obj_set_size(btn_ao_plus, 28, 24);
+            lv_obj_set_pos(btn_ao_plus, 272, y + 3);
+            lv_obj_set_style_bg_color(btn_ao_plus, lv_color_hex(0x333333), 0);
+            lv_obj_set_style_radius(btn_ao_plus, 2, 0);
+            lv_obj_add_event_cb(btn_ao_plus, auto_off_plus_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_set_ext_click_area(btn_ao_plus, 2);
+            lv_obj_t* lbl_ao_plus = lv_label_create(btn_ao_plus);
+            if (lbl_ao_plus) {
+                lv_label_set_text(lbl_ao_plus, "+");
+                lv_obj_center(lbl_ao_plus);
+            }
         }
         y += ROW_H + GAP;
 
