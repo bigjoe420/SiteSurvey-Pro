@@ -18,6 +18,10 @@ esp_err_t sd_card_init(void)
     // SD is the third device on SPI2 (display 20 MHz, touch 2.5 MHz); the bus
     // is already up and CS is parked HIGH from board_init_gpio
     sdmmc_host_t host = SDSPI_HOST_DEFAULT();
+    // Writes (not reads) were flaking at the card level (FR_DISK_ERR on write
+    // data tokens, reads always OK) — drop to 10 MHz for margin. CSV lines are
+    // tiny; throughput is irrelevant here.
+    host.max_freq_khz = 10000;
 
     sdspi_device_config_t slot = SDSPI_DEVICE_CONFIG_DEFAULT();
     slot.host_id = SPI2_HOST;
