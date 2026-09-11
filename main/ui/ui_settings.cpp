@@ -10,6 +10,7 @@
 #include "ui_home.h"
 #include "ota_update.h"
 #include "kml_export.h"
+#include "report_export.h"
 #include "esp_heap_caps.h"
 #include "esp_app_desc.h"
 #include "freertos/FreeRTOS.h"
@@ -264,6 +265,26 @@ static void kml_export_cb(lv_event_t*)
     char buf[48];
     snprintf(buf, sizeof(buf), "KML: %d APs%s", placemarks,
              nofix ? " (no GPS)" : "");
+    lv_label_set_text(s_lbl_kml, buf);
+    (void)path;
+}
+
+static void report_export_cb(lv_event_t*)
+{
+    if (!s_lbl_kml) return;
+    char path[128];
+    int aps = 0;
+    esp_err_t err = report_export_latest(path, sizeof(path), &aps);
+    if (err == ESP_ERR_NOT_FOUND) {
+        lv_label_set_text(s_lbl_kml, "Report: no session file / no SD");
+        return;
+    }
+    if (err != ESP_OK) {
+        lv_label_set_text(s_lbl_kml, "Report export failed");
+        return;
+    }
+    char buf[48];
+    snprintf(buf, sizeof(buf), "Report: %d APs -> SD", aps);
     lv_label_set_text(s_lbl_kml, buf);
     (void)path;
 }
@@ -1376,7 +1397,7 @@ lv_obj_t* ui_settings_create(void)
 
         lv_obj_t* btn_kml = lv_btn_create(s_panel);
         if (btn_kml) {
-            lv_obj_set_size(btn_kml, 160, 26);
+            lv_obj_set_size(btn_kml, 148, 26);
             lv_obj_set_pos(btn_kml, 8, y + 2);
             lv_obj_set_style_bg_color(btn_kml, lv_color_hex(0x1F4E79), 0);
             lv_obj_set_style_radius(btn_kml, 3, 0);
@@ -1390,12 +1411,29 @@ lv_obj_t* ui_settings_create(void)
             }
         }
 
+        lv_obj_t* btn_rep = lv_btn_create(s_panel);
+        if (btn_rep) {
+            lv_obj_set_size(btn_rep, 148, 26);
+            lv_obj_set_pos(btn_rep, 164, y + 2);
+            lv_obj_set_style_bg_color(btn_rep, lv_color_hex(0x1F4E79), 0);
+            lv_obj_set_style_radius(btn_rep, 3, 0);
+            lv_obj_add_event_cb(btn_rep, report_export_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_t* lbl_rep = lv_label_create(btn_rep);
+            if (lbl_rep) {
+                lv_label_set_text(lbl_rep, "Export Report");
+                lv_obj_set_style_text_font(lbl_rep, &lv_font_montserrat_14, 0);
+                lv_obj_set_style_text_color(lbl_rep, lv_color_white(), 0);
+                lv_obj_center(lbl_rep);
+            }
+        }
+        y += 30 + GAP;
+
         s_lbl_kml = lv_label_create(s_panel);
         if (s_lbl_kml) {
-            lv_label_set_text(s_lbl_kml, "converts last survey to /sdcard");
+            lv_label_set_text(s_lbl_kml, "converts last survey on SD card");
             lv_obj_set_style_text_font(s_lbl_kml, &lv_font_montserrat_14, 0);
             lv_obj_set_style_text_color(s_lbl_kml, lv_color_hex(0xE8E8E8), 0);
-            lv_obj_set_pos(s_lbl_kml, 176, y + 8);
+            lv_obj_set_pos(s_lbl_kml, 8, y + 4);
         }
         y += ROW_H + SECTION_GAP;
     }
