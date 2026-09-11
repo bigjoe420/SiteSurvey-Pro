@@ -22,7 +22,14 @@ static lv_obj_t* s_lon_label;
 static lv_obj_t* s_sats_label;
 static lv_obj_t* s_utc_label;
 static lv_obj_t* s_nmea_label;
+static lv_obj_t* s_module_label;   // plain-English module health verdict
 static lv_timer_t* s_timer;
+
+// Module liveness snapshot (UI-side, no driver changes needed): a working
+// module streams ~300 B/s at 9600 baud, so rx_bytes advancing between 1 s
+// refreshes means ALIVE; zero bytes ever means SILENT (power/wiring).
+static uint32_t s_last_rx;
+static bool     s_rx_seen;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -97,8 +104,26 @@ static void gps_refresh(lv_timer_t*)
         lv_label_set_text(s_sats_label, "Sats: --");
         lv_label_set_text(s_utc_label,  "UTC: --");
         lv_label_set_text(s_nmea_label, "NMEA: --");
+        lv_label_set_text(s_module_label, "MODULE: waiting for data...");
+        lv_obj_set_style_text_color(s_module_label, lv_color_hex(0xFFC107), 0);
         return;
     }
+
+    // Module health verdict — the bench-test line for a silent GPS module.
+    if (state.rx_bytes > 0) s_rx_seen = true;
+    if (!s_rx_seen) {
+        lv_label_set_text(s_module_label,
+                          "MODULE: SILENT - no bytes (check power/LED)");
+        lv_obj_set_style_text_color(s_module_label, lv_color_hex(0xF44336), 0);
+    } else if (state.rx_bytes != s_last_rx) {
+        lv_label_set_text(s_module_label, "MODULE: ALIVE - NMEA streaming");
+        lv_obj_set_style_text_color(s_module_label, lv_color_hex(0x4CAF50), 0);
+    } else {
+        lv_label_set_text(s_module_label,
+                          "MODULE: STALLED - bytes stopped (check wiring)");
+        lv_obj_set_style_text_color(s_module_label, lv_color_hex(0xFFC107), 0);
+    }
+    s_last_rx = state.rx_bytes;
 
     lv_label_set_text(s_fix_label, fix_str(state.fix_quality));
     lv_obj_set_style_text_color(s_fix_label, fix_color(state.fix_quality), 0);
@@ -214,6 +239,17 @@ lv_obj_t* ui_gps_create(void)
     lv_obj_set_style_text_font(s_nmea_label, &lv_font_montserrat_14, 0);
     lv_obj_set_style_text_color(s_nmea_label, lv_color_hex(0x757575), 0);
     lv_obj_set_pos(s_nmea_label, 24, 200);
+
+    // Module health verdict line — bench test for a dead/silent GPS module
+    s_module_label = lv_label_create(scr);
+    lv_label_set_text(s_module_label, "MODULE: waiting for data...");
+    lv_obj_set_style_text_font(s_module_label, &lv_font_montserrat_14, 0);
+    lv_obj_set_style_text_color(s_module_label, lv_color_hex(0xFFC107), 0);
+    lv_obj_set_pos(s_module_label, 24, 222);
+
+    // Fresh liveness baseline each time the screen is built
+    s_last_rx = 0;
+    s_rx_seen = false;
 
     s_timer = lv_timer_create(gps_refresh, 1000, nullptr);
     return scr;
