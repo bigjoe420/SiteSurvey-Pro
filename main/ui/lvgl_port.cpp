@@ -151,9 +151,14 @@ esp_err_t lvgl_port_init(void)
     lv_indev_t* indev = lv_indev_create();
     lv_indev_set_type(indev, LV_INDEV_TYPE_POINTER);
     lv_indev_set_read_cb(indev, touch_read_cb);
-    // Touch polling at 100 Hz; the sampler runs at 50 Hz, so every other
-    // read gets a fresh sample and the in-betweens repeat the latest coord.
-    lv_timer_set_period(lv_indev_get_read_timer(indev), 10);
+    // Read at the sampler's native 50 Hz. At 10 ms every other read repeated
+    // the previous coordinate, so drag deltas arrived as move/0/move/0 bursts
+    // — the source of the "jumpy" scroll feel. 20 ms gives every read a fresh,
+    // uniformly spaced sample; worst-case tap latency grows 10 ms, invisible.
+    lv_timer_set_period(lv_indev_get_read_timer(indev), 20);
+    // Default throw is 10% (long, fast glide). 25% settles a flick sooner so
+    // the list stops where the finger meant it to — the "fast" complaint.
+    lv_indev_set_scroll_throw(indev, 25);
 
     esp_timer_create_args_t tick_args = {};
     tick_args.callback = tick_cb;
