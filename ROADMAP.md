@@ -3,7 +3,7 @@
 ================================================================================
 
 > **Single source of truth for project direction.** Update this file when milestones land.
-> **Last updated:** 2026-09-04
+> **Last updated:** 2026-09-11
 > **Workspace:** `D:\SiteSurvey Pro` | **GitHub (manual backup only):** `bigjoe420/SiteSurvey-Pro`
 > **Platform:** NM-CYD-C5 (ESP32-C5 RISC-V, ESP-IDF v6.0.1)
 > **Manufacturer Repo:** https://github.com/RockBase-iot/NM-CYD-C5
@@ -86,8 +86,8 @@ Hardware verification and board support package (BSP) establishment completed.
 
 ### Phase 3: Polish & Hardening — 🟡 ACTIVE
 - [x] On-device RSSI graphing (RSSI over time per AP) — detail chart since 2026-09-04; upgraded 2026-09-10: 64-sample (~5 min) window, min/max/avg stats, grid + dBm corner labels, live tier color
-- [ ] Power management & battery life optimization
-- [ ] UI themes (outdoor high-contrast mode)
+- [x] Power management & battery life optimization — partial 2026-09-11: idle dim (31.8 s), auto power-off presets (0/15/30/60/120 min, NVS-persisted, deep sleep on touch-idle, BOOT wake), power-off button — verified on-device (commit `01209ac`); battery sensing still hardware-blocked (no battery connector)
+- [x] UI themes (outdoor high-contrast mode) — verified on-device 2026-09-11 (commit `e265bad`): `ui_theme` module, Settings toggle, NVS-persisted via flash_broker, dim floor 35%, display never fully off in outdoor mode
 - [x] Configurable scan filters (by RSSI threshold, SSID pattern, 2.4/5 GHz band) — verified on-device 2026-09-07
 - [x] Firmware update mechanism — SD-card OTA via esp_ota_ops, version-aware picker — verified boot 2026-09-10 (commits `bb1072e`, `7a3cbac`, `9d42e1e`, tag `v0.9.0`)
 - [x] On-device scan report generation — Settings → Data export → Export Report writes `<session>.txt` (observations, bands, channels, strongest/weakest, security, coverage); VERIFIED on-device 2026-09-11 (commit `e6dfb63`)
@@ -133,9 +133,9 @@ Hardware verification and board support package (BSP) establishment completed.
 | 2.3 | BME680 env snapshot per scan | ✅ Done | Temp/humidity/pressure/VOC at scan time |
 | 2.4 | BME680 continuous telemetry | ✅ Done | 5 s interval; live readout on home + scan screens |
 | 2.5 | SD card log export (CSV) | ✅ Done | WiGLE-compatible; session-based naming |
-| 2.6 | SD card log export (KML) | ⏸️ Deferred | Google Earth mapping |
+| 2.6 | SD card log export (KML) | ✅ Done | Google Earth mapping — shipped 2026-09-10 (commit `e6dfb63`) |
 | 2.7 | Serial telemetry stream | ✅ Done | Debug fallback via `idf.py monitor` |
-| 2.8 | On-device graphing (LVGL charts) | ⏸️ Deferred | RSSI history per AP; Phase 3 priority |
+| 2.8 | On-device graphing (LVGL charts) | ✅ Done | RSSI history per AP — detail chart (see Phase 3 entry); upgraded 2026-09-10 |
 
 ### 4.4 System & Infrastructure
 
@@ -146,8 +146,8 @@ Hardware verification and board support package (BSP) establishment completed.
 | 3.3 | LVGL + ST7789 | ✅ Done | SPI display, 320×240, PSRAM buffers | Medium |
 | 3.4 | XPT2046 touch | ✅ Done | Resistive, shared SPI @ 2.5 MHz, measured calibration | Medium |
 | 3.5 | PSRAM config | ✅ Done | 8MB; 256 KB secondary LVGL pool | Low |
-| 3.6 | Power management | ⏸️ Deferred | Deep sleep between scans | Medium |
-| 3.7 | OTA updates | ⏸️ Deferred | Secure firmware delivery | High |
+| 3.6 | Power management | ✅ Done | Idle dim, auto power-off deep sleep, power-off button — verified 2026-09-11 (commit `01209ac`) | Medium |
+| 3.7 | OTA updates | ✅ Done | SD-card OTA via esp_ota_ops, version-aware picker — verified boot 2026-09-10 (commits `bb1072e`, `7a3cbac`, `9d42e1e`, tag `v0.9.0`) | High |
 
 ---
 
@@ -185,7 +185,7 @@ Hardware verification and board support package (BSP) establishment completed.
 | SD card on shared SPI2 | Verified | 32 GB card mounted; write/read self-test OK. |
 | PSRAM LVGL pool | Resolved 2026-09-04 | 256 KB secondary pool + TLSF max pool fix; ASSERT_NULL disabled. |
 | RGB LED | Verified 2026-09-04 | RMT driver on GPIO27; red flash on alert match confirmed on-device. |
-| GPS antenna | Pending | Module seated; sky-view fix validation pending. |
+| GPS module | Pending hardware | Original module dead (no power LED); replacement bring-up + outdoor fix test deferred to next session (2026-09-11) |
 | GPIO 8/9 I2C conflict | Known | Also used for CC1101/NRF24 in Bruce firmware. Reserved for I2C only. |
 | Deepsleep wake GPIO | Known | GPIO 0 is wake source. Must be HIGH at boot. |
 
@@ -198,7 +198,7 @@ Hardware verification and board support package (BSP) establishment completed.
 | B-01 | Spectrum analyzer waterfall display (LVGL) | User | Medium | `[investigate]` |
 | B-02 | Alert mode: notify on target SSID or RSSI threshold | User | High | `[done]` 2026-09-04 — alert engine + NVS target list + LED flash |
 | B-03 | WiFi 6 (802.11ax) feature detection (HE capabilities) | User | Low | `[backlog]` |
-| B-04 | Rogue AP detection / evil twin warning | User | Medium | `[backlog]` |
+| B-04 | Rogue AP detection / evil twin warning | User | Medium | `[done]` — red "!" marker in Wi-Fi list, shipped earlier session |
 | B-05 | Offline map overlay with GPS-tagged scan points | User | Low | `[backlog]` |
 | B-06 | Expressive UI language: rich color + motion | User | High | `[done]` — rainbow splash, gauge gradients, block grid 2026-09-04 |
 | B-07 | Environmental gauges with gradient scales | User | High | `[done]` 2026-08-10 (commit `e3b3446`) |
