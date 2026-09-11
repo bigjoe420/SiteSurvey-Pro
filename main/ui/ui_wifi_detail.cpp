@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstring>
 #include "scan_engine.h"
+#include "ui_theme.h"
 
 // ---------------------------------------------------------------------------
 // State
@@ -19,10 +20,7 @@ static bool s_visible = false;
 static uint8_t s_bssid[6];
 
 // ROADMAP §5 tiers: Strong green, Moderate yellow, Weak orange, Marginal red
-static const lv_color_t TIER_COLORS[] = {
-    lv_color_hex(0x4CAF50), lv_color_hex(0xFFEB3B),
-    lv_color_hex(0xFF9800), lv_color_hex(0xF44336),
-};
+// — resolved through ui_theme_tier_color() so outdoor mode gets brighter tiers
 
 static int tier_for_rssi(int8_t rssi)
 {
@@ -54,7 +52,7 @@ static void populate_chart(void)
         }
         // Live series colour follows the newest sample's tier
         lv_chart_set_series_color(s_chart, s_series,
-                                  TIER_COLORS[tier_for_rssi(samples[n - 1])]);
+                                  ui_theme_tier_color(tier_for_rssi(samples[n - 1])));
         if (s_stats) {
             char buf[64];
             snprintf(buf, sizeof(buf), "now %d  min %d  max %d  avg %d dBm",
@@ -92,7 +90,7 @@ lv_obj_t* ui_wifi_detail_create(const WifiApInfo_t* info, lv_event_cb_t back_cb)
     lv_obj_t* back = lv_btn_create(s_scr);
     lv_obj_set_size(back, 80, 32);
     lv_obj_set_pos(back, 4, 4);
-    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_bg_color(back, lv_color_hex(ui_theme()->btn), 0);
     lv_obj_set_style_radius(back, 3, 0);
     lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
     lv_obj_set_ext_click_area(back, 32);
@@ -114,12 +112,12 @@ lv_obj_t* ui_wifi_detail_create(const WifiApInfo_t* info, lv_event_cb_t back_cb)
     lv_obj_set_pos(s_chart, 20, 44);
     lv_chart_set_type(s_chart, LV_CHART_TYPE_LINE);
     lv_chart_set_axis_range(s_chart, LV_CHART_AXIS_PRIMARY_Y, -100, -25);
-    lv_obj_set_style_bg_color(s_chart, lv_color_hex(0x1E1E1E), 0);
+    lv_obj_set_style_bg_color(s_chart, lv_color_hex(ui_theme()->track), 0);
     lv_obj_set_style_border_width(s_chart, 0, 0);
     // Grid for readability (LVGL v9 chart has no axis tick API — corner
     // labels below carry the dBm scale)
     lv_chart_set_div_line_count(s_chart, 3, 5);
-    lv_obj_set_style_line_color(s_chart, lv_color_hex(0x3A3A3A), LV_PART_MAIN);
+    lv_obj_set_style_line_color(s_chart, lv_color_hex(ui_theme()->grid), LV_PART_MAIN);
     // Small point markers on the series line
     lv_obj_set_style_size(s_chart, 3, 3, LV_PART_INDICATOR);
 
@@ -128,19 +126,19 @@ lv_obj_t* ui_wifi_detail_create(const WifiApInfo_t* info, lv_event_cb_t back_cb)
     if (ytop) {
         lv_label_set_text(ytop, "-25");
         lv_obj_set_style_text_font(ytop, &lv_font_montserrat_14, 0);
-        lv_obj_set_style_text_color(ytop, lv_color_hex(0x909090), 0);
+        lv_obj_set_style_text_color(ytop, lv_color_hex(ui_theme()->sub), 0);
         lv_obj_align(ytop, LV_ALIGN_TOP_LEFT, 3, 1);
     }
     lv_obj_t* ybot = lv_label_create(s_chart);
     if (ybot) {
         lv_label_set_text(ybot, "-100");
         lv_obj_set_style_text_font(ybot, &lv_font_montserrat_14, 0);
-        lv_obj_set_style_text_color(ybot, lv_color_hex(0x909090), 0);
+        lv_obj_set_style_text_color(ybot, lv_color_hex(ui_theme()->sub), 0);
         lv_obj_align(ybot, LV_ALIGN_BOTTOM_LEFT, 3, -1);
     }
 
     // Series — colour reflects current severity tier
-    lv_color_t c = TIER_COLORS[info->severity];
+    lv_color_t c = ui_theme_tier_color(info->severity);
     s_series = lv_chart_add_series(s_chart, c, LV_CHART_AXIS_PRIMARY_Y);
 
     populate_chart();
@@ -148,13 +146,13 @@ lv_obj_t* ui_wifi_detail_create(const WifiApInfo_t* info, lv_event_cb_t back_cb)
     // Stats line — now/min/max/avg over the history window
     s_stats = lv_label_create(s_scr);
     lv_obj_set_style_text_font(s_stats, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(s_stats, lv_color_hex(0xE8E8E8), 0);
+    lv_obj_set_style_text_color(s_stats, lv_color_hex(ui_theme()->text), 0);
     lv_obj_align(s_stats, LV_ALIGN_BOTTOM_MID, 0, -26);
 
     // Info label — channel, current RSSI, auth mode
     s_info = lv_label_create(s_scr);
     lv_obj_set_style_text_font(s_info, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(s_info, lv_color_hex(0xB0B0B0), 0);
+    lv_obj_set_style_text_color(s_info, lv_color_hex(ui_theme()->label), 0);
     lv_obj_align(s_info, LV_ALIGN_BOTTOM_MID, 0, -8);
 
     static char info_buf[80];
@@ -178,7 +176,7 @@ void ui_wifi_detail_update(const WifiApInfo_t* info)
 
     // Change series colour to match new AP's severity
     if (s_series) {
-        lv_color_t c = TIER_COLORS[info->severity];
+        lv_color_t c = ui_theme_tier_color(info->severity);
         lv_chart_set_series_color(s_chart, s_series, c);
     }
 

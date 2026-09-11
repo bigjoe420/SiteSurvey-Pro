@@ -5,6 +5,7 @@
 #include "esp_log.h"
 #include "ui_spin3d.h"
 #include "ui_home.h"
+#include "ui_theme.h"
 
 // -----------------------------------------------------------------------------
 // Gauge model
@@ -32,23 +33,26 @@ typedef struct {
     bool has_value = false;
 } Gauge;
 
-static const Band TEMP_BANDS[] = {
-    {0.300f, lv_color_hex(0x2196F3)},
-    {0.556f, lv_color_hex(0x4CAF50)},
-    {0.700f, lv_color_hex(0xFFC107)},
-    {1.000f, lv_color_hex(0xF44336)},
-};
-static const Band HUM_BANDS[] = {
-    {0.300f, lv_color_hex(0xFFC107)},
-    {0.600f, lv_color_hex(0x4CAF50)},
-    {0.750f, lv_color_hex(0xFFC107)},
-    {1.000f, lv_color_hex(0xF44336)},
-};
-static const Band VOC_BANDS[] = {
-    {0.067f, lv_color_hex(0xF44336)},
-    {0.333f, lv_color_hex(0xFFC107)},
-    {1.000f, lv_color_hex(0x4CAF50)},
-};
+// Band colors are filled at screen creation (ui_env_init_gauge_colors) —
+// the palette is only known at runtime once the outdoor flag is applied.
+static Band TEMP_BANDS[4];
+static Band HUM_BANDS[4];
+static Band VOC_BANDS[3];
+
+static void ui_env_init_gauge_colors(void)
+{
+    TEMP_BANDS[0] = {0.300f, THM_BLUE};
+    TEMP_BANDS[1] = {0.556f, THM_OK};
+    TEMP_BANDS[2] = {0.700f, THM_WARN};
+    TEMP_BANDS[3] = {1.000f, THM_BAD};
+    HUM_BANDS[0]  = {0.300f, THM_WARN};
+    HUM_BANDS[1]  = {0.600f, THM_OK};
+    HUM_BANDS[2]  = {0.750f, THM_WARN};
+    HUM_BANDS[3]  = {1.000f, THM_BAD};
+    VOC_BANDS[0]  = {0.067f, THM_BAD};
+    VOC_BANDS[1]  = {0.333f, THM_WARN};
+    VOC_BANDS[2]  = {1.000f, THM_OK};
+}
 
 static void fmt_tenths(char* b, size_t n, int32_t v, const char* unit)
 {
@@ -65,8 +69,8 @@ static Gauge s_gauges[] = {
     { .name = "HUMIDITY",  .bands = HUM_BANDS,  .nbands = 4,
       .min_x100 = 0,     .max_x100 = 10000,  .fmt = fmt_hum,   .shape = SPIN_TETRA },
     { .name = "PRESSURE",  .bands = nullptr,    .nbands = 0,
-      .grad_a = lv_color_hex(0x1DE9B6), .grad_b = lv_color_hex(0x2979FF),
       .min_x100 = 95000, .max_x100 = 105000, .fmt = fmt_press, .shape = SPIN_ICOSA },
+      // grad_a/grad_b set at runtime in ui_env_create (theme-dependent)
     { .name = "AIR (VOC)", .bands = VOC_BANDS,  .nbands = 3,
       .min_x100 = 0,     .max_x100 = 15000,  .fmt = fmt_voc,   .shape = SPIN_CUBE  },
 };
@@ -153,8 +157,8 @@ static void gauge_clear(Gauge* g)
 {
     g->has_value = false;
     lv_label_set_text(g->value_label, "--");
-    lv_obj_set_style_text_color(g->value_label, lv_color_hex(0x757575), 0);
-    ui_spin3d_set(g->spin, 0.0f, lv_color_hex(0x424242));
+    lv_obj_set_style_text_color(g->value_label, lv_color_hex(ui_theme()->faint), 0);
+    ui_spin3d_set(g->spin, 0.0f, lv_color_hex(ui_theme()->track));
 }
 
 static void env_refresh(lv_timer_t*)
@@ -169,19 +173,19 @@ static void env_refresh(lv_timer_t*)
 
     if (!present) {
         lv_label_set_text(s_status, "BME680 OFFLINE");
-        lv_obj_set_style_text_color(s_status, lv_color_hex(0xF44336), 0);
+        lv_obj_set_style_text_color(s_status, THM_BAD, 0);
         for (int i = 0; i < N_GAUGES; i++) gauge_clear(&s_gauges[i]);
         return;
     }
     if (!have || !snap.env_valid) {
         lv_label_set_text(s_status, "WAITING FOR SAMPLE");
-        lv_obj_set_style_text_color(s_status, lv_color_hex(0xFFC107), 0);
+        lv_obj_set_style_text_color(s_status, THM_WARN, 0);
         for (int i = 0; i < N_GAUGES; i++) gauge_clear(&s_gauges[i]);
         return;
     }
 
     lv_label_set_text(s_status, "LIVE");
-    lv_obj_set_style_text_color(s_status, lv_color_hex(0x4CAF50), 0);
+    lv_obj_set_style_text_color(s_status, THM_OK, 0);
     gauge_set(&s_gauges[0], snap.env.temp_c_x100 * 9 / 5 + 3200);
     gauge_set(&s_gauges[1], (int32_t)snap.env.hum_x100);
     gauge_set(&s_gauges[2], (int32_t)snap.env.press_pa);
@@ -194,13 +198,13 @@ static void build_gauge(lv_obj_t* scr, Gauge* g, int x, int y)
 
     lv_obj_t* name = lv_label_create(scr);
     lv_label_set_text(name, g->name);
-    lv_obj_set_style_text_color(name, lv_color_hex(0xE8E8E8), 0);
+    lv_obj_set_style_text_color(name, lv_color_hex(ui_theme()->text), 0);
     lv_obj_set_pos(name, x, y);
 
     g->value_label = lv_label_create(scr);
     lv_label_set_text(g->value_label, "--");
     lv_obj_set_style_text_font(g->value_label, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(g->value_label, lv_color_hex(0x757575), 0);
+    lv_obj_set_style_text_color(g->value_label, lv_color_hex(ui_theme()->faint), 0);
     lv_obj_set_pos(g->value_label, x, y + 16);
 
     g->spin = ui_spin3d_create(scr, x + 96, y + 4, 40, g->shape);
@@ -213,7 +217,7 @@ static void build_gauge(lv_obj_t* scr, Gauge* g, int x, int y)
     lv_obj_set_style_pad_all(track, 0, 0);
     lv_obj_set_style_radius(track, 0, 0);
     if (g->bands) {
-        lv_obj_set_style_bg_color(track, lv_color_hex(0x1E1E1E), 0);
+        lv_obj_set_style_bg_color(track, lv_color_hex(ui_theme()->track), 0);
         lv_obj_set_style_bg_opa(track, LV_OPA_COVER, 0);
         float start = 0.0f;
         for (int i = 0; i < g->nbands; i++) {
@@ -251,13 +255,13 @@ static void build_gauge(lv_obj_t* scr, Gauge* g, int x, int y)
     lv_obj_t* lo = lv_label_create(scr);
     g->fmt(buf, sizeof(buf), g->min_x100);
     lv_label_set_text(lo, buf);
-    lv_obj_set_style_text_color(lo, lv_color_hex(0x616161), 0);
+    lv_obj_set_style_text_color(lo, lv_color_hex(ui_theme()->faint), 0);
     lv_obj_set_pos(lo, x, TRACK_Y + TRACK_H + 4);
 
     lv_obj_t* hi = lv_label_create(scr);
     g->fmt(buf, sizeof(buf), g->max_x100);
     lv_label_set_text(hi, buf);
-    lv_obj_set_style_text_color(hi, lv_color_hex(0x616161), 0);
+    lv_obj_set_style_text_color(hi, lv_color_hex(ui_theme()->faint), 0);
     lv_obj_set_pos(hi, x + W - 48, TRACK_Y + TRACK_H + 4);
 }
 
@@ -272,10 +276,15 @@ lv_obj_t* ui_env_create(void)
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
 
+    // Theme-dependent gauge colors (palette known once outdoor flag applied)
+    ui_env_init_gauge_colors();
+    s_gauges[2].grad_a = THM_TEAL;
+    s_gauges[2].grad_b = THM_BLUE2;
+
     lv_obj_t* back = lv_btn_create(scr);
     lv_obj_set_size(back, 80, 32);
     lv_obj_set_pos(back, 4, 4);
-    lv_obj_set_style_bg_color(back, lv_color_hex(0x333333), 0);
+    lv_obj_set_style_bg_color(back, lv_color_hex(ui_theme()->btn), 0);
     lv_obj_set_style_radius(back, 3, 0);
 
     lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
@@ -292,7 +301,7 @@ lv_obj_t* ui_env_create(void)
     const int Y0 = 66;
     s_status = lv_label_create(scr);
     lv_label_set_text(s_status, "WAITING FOR SAMPLE");
-    lv_obj_set_style_text_color(s_status, lv_color_hex(0xFFC107), 0);
+    lv_obj_set_style_text_color(s_status, THM_WARN, 0);
     lv_obj_set_pos(s_status, 12, 48);
 
     build_gauge(scr, &s_gauges[0], 12, Y0);

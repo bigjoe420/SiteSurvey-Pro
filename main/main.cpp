@@ -31,6 +31,7 @@
 #include "led_rgb.h"
 #include "power_mgr.h"
 #include "flash_broker.h"
+#include "ui_theme.h"
 
 static const char* TAG = "SiteSurvey";
 
@@ -233,6 +234,12 @@ extern "C" void app_main(void)
 
     ESP_ERROR_CHECK(power_mgr_init());
     log_dma_heap("after power_mgr_init");
+
+    // Select the UI palette (indoor / outdoor high-contrast) before any
+    // screen is created. power_mgr loaded the persisted flag from NVS on the
+    // main task just now — safe context, no broker needed.
+    ui_theme_set_outdoor(power_mgr_get_outdoor());
+    ESP_LOGI(TAG, "UI theme: %s", power_mgr_get_outdoor() ? "outdoor (high contrast)" : "indoor");
 
     scan_filter_init();
     log_dma_heap("after scan_filter_init");
