@@ -22,6 +22,7 @@ idf_component_register(
          "sensors/sensors.cpp"
          "storage/sd_card.cpp"
          "storage/session_logger.cpp"
+         "storage/kml_export.cpp"
          "alerts/alert_engine.cpp"
          "led/led_rgb.cpp"
          "power/power_mgr.cpp"
