@@ -36,7 +36,7 @@ static lv_timer_t* s_timer;
 static lv_obj_t* s_status_lbl;
 
 // RSSI tier colors resolve through ui_theme_tier_color() at use time so the
-// outdoor palette gets its brighter tiers.
+// palette can be tuned in one place (ui_theme).
 
 #define ROW_H       30
 #define ROW_STRIDE  32
