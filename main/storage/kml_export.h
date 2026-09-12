@@ -4,6 +4,13 @@
 #include <stddef.h>
 #include "esp_err.h"
 
+// Converts an EXPLICIT session CSV (/sdcard/survey_*.csv) to KML
+// (/sdcard/<same name>.kml). Same semantics as kml_export_latest; the
+// output path is derived from csv_path. Use kml_export_latest to have the
+// active session resolved automatically.
+esp_err_t kml_export_path(const char* csv_path, char* out_path, size_t out_path_len,
+                          int* out_placemarks, int* out_no_fix);
+
 // Converts the most recent session CSV on the SD card (/sdcard/survey_*.csv)
 // to a KML file for Google Earth (/sdcard/<same name>.kml).
 //

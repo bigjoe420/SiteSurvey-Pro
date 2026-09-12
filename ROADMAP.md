@@ -91,6 +91,7 @@ Hardware verification and board support package (BSP) establishment completed.
 - [x] Configurable scan filters (by RSSI threshold, SSID pattern, 2.4/5 GHz band) — verified on-device 2026-09-07
 - [x] Firmware update mechanism — SD-card OTA via esp_ota_ops, version-aware picker — verified boot 2026-09-10 (commits `bb1072e`, `7a3cbac`, `9d42e1e`, tag `v0.9.0`)
 - [x] On-device scan report generation — Settings → Data export → Export Report writes `<session>.txt` (observations, bands, channels, strongest/weakest, security, coverage); VERIFIED on-device 2026-09-11 (commit `e6dfb63`)
+- [x] Session picker for export — KML/Report convert a CHOSEN session via "Select session" modal (lists SD sessions, marks active, picker survives leftover open sessions); boot VERIFIED 2026-09-12, owner finger-test pending
 
 ---
 
