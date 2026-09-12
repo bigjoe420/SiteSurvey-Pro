@@ -2,7 +2,9 @@
 
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 #include <stdio.h>
+#include <time.h>
 
 // Shared helpers for reading SiteSurvey Pro session CSV files
 // (/sdcard/survey_*.csv), used by the KML and report exporters.
@@ -39,6 +41,21 @@ bool csv_find_latest(char* out_path, size_t n);
 // every file 1970 and FAT cannot represent pre-1980 dates, so neither
 // name nor timestamp order is reliable across boots.
 bool csv_find_active(char* out_path, size_t n);
+
+// One non-empty survey_*.csv found on the SD card.
+typedef struct {
+    char     name[40];    // file name only, e.g. "survey_19700101_000132.csv"
+    uint32_t size;        // bytes
+    time_t   mtime;       // for csv_list_sessions sorting only
+    bool     is_active;   // matches /sdcard/current_session
+} CsvSession;
+
+// List non-empty survey_*.csv files on the SD card, newest first
+// (mtime desc, file-name desc as tiebreak — same rule as csv_find_latest,
+// with the same no-RTC caveat: across boots, "newest" is a heuristic).
+// The currently-active session is flagged. out must hold max entries.
+// Returns the number of sessions written (0 = no SD / none / bad args).
+int csv_list_sessions(CsvSession* out, int max);
 
 // Growable table of unique APs keyed by MAC, allocated from PSRAM.
 typedef struct {

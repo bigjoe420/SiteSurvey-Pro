@@ -67,6 +67,62 @@ bool csv_find_latest(char* out_path, size_t n)
     return true;
 }
 
+int csv_list_sessions(CsvSession* out, int max)
+{
+    if (!out || max <= 0) return 0;
+
+    // Active session basename (if the pointer file exists) for marking.
+    char active[40] = {0};
+    FILE* pf = fopen(ACTIVE_POINTER, "r");
+    if (pf) {
+        char p[320] = {0};
+        if (fgets(p, sizeof(p), pf)) {
+            p[strcspn(p, "\r\n")] = 0;
+            const char* slash = strrchr(p, '/');
+            snprintf(active, sizeof(active), "%.*s",
+                     (int)sizeof(active) - 1, slash ? slash + 1 : p);
+        }
+        fclose(pf);
+    }
+
+    DIR* d = opendir(SD_DIR);
+    if (!d) return 0;
+    int n = 0;
+    struct dirent* de;
+    while ((de = readdir(d)) != nullptr && n < max) {
+        const char* nm = de->d_name;
+        size_t L = strlen(nm);
+        if (L < 12 || L >= sizeof(out[0].name)) continue;
+        if (strncmp(nm, "survey_", 7) != 0) continue;
+        if (strcmp(nm + L - 4, ".csv") != 0) continue;
+        char p[320];
+        snprintf(p, sizeof(p), "%s/%s", SD_DIR, nm);
+        struct stat st;
+        if (stat(p, &st) != 0 || st.st_size == 0) continue;
+        snprintf(out[n].name, sizeof(out[n].name), "%.*s",
+                 (int)sizeof(out[n].name) - 1, nm);
+        out[n].size  = (uint32_t)st.st_size;
+        out[n].mtime = st.st_mtime;
+        out[n].is_active = active[0] && strcmp(nm, active) == 0;
+        n++;
+    }
+    closedir(d);
+
+    // Newest first: mtime desc, file name desc as tiebreak.
+    for (int i = 1; i < n; i++) {
+        CsvSession key = out[i];
+        int j = i - 1;
+        while (j >= 0 &&
+               (out[j].mtime < key.mtime ||
+                (out[j].mtime == key.mtime && strcmp(out[j].name, key.name) < 0))) {
+            out[j + 1] = out[j];
+            j--;
+        }
+        out[j + 1] = key;
+    }
+    return n;
+}
+
 bool csv_parse_row(char* line, ApRec* r)
 {
     line[strcspn(line, "\r\n")] = 0;

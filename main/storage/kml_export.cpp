@@ -51,12 +51,26 @@ esp_err_t kml_export_latest(char* out_path, size_t out_path_len,
         ESP_LOGW(TAG, "SD card absent");
         return ESP_ERR_NOT_FOUND;
     }
-
     char csv_path[128];
     if (!csv_find_active(csv_path, sizeof(csv_path))) {
         ESP_LOGW(TAG, "no session CSV found");
         return ESP_ERR_NOT_FOUND;
     }
+    return kml_export_path(csv_path, out_path, out_path_len,
+                           out_placemarks, out_no_fix);
+}
+
+esp_err_t kml_export_path(const char* csv_path, char* out_path, size_t out_path_len,
+                          int* out_placemarks, int* out_no_fix)
+{
+    if (!sd_card_present()) {
+        ESP_LOGW(TAG, "SD card absent");
+        return ESP_ERR_NOT_FOUND;
+    }
+    if (!csv_path || !csv_path[0]) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
     // Output: same name with .kml
     const char* slash = strrchr(csv_path, '/');
     const char* base = slash ? slash + 1 : csv_path;
