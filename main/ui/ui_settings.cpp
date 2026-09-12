@@ -11,6 +11,7 @@
 #include "ota_update.h"
 #include "kml_export.h"
 #include "report_export.h"
+#include "session_csv.h"
 #include "esp_heap_caps.h"
 #include "esp_app_desc.h"
 #include "esp_system.h"
@@ -82,6 +83,17 @@ static OtaFile_t s_ota_files[8];
 static int  s_ota_count;
 static int  s_ota_sel;        // selected file index for confirm state
 static bool s_ota_flashing;   // re-entry guard while a flash is running
+
+// Session export picker: choose WHICH survey CSV the KML/report buttons
+// convert. s_sess_sel empty = fall back to the active session (old behavior).
+#define SESS_MAX 48
+static lv_obj_t* s_sess_modal;
+static lv_obj_t* s_sess_title;
+static lv_obj_t* s_sess_list;
+static lv_obj_t* s_sess_empty;
+static CsvSession s_sess_files[SESS_MAX];
+static int  s_sess_count;
+static char s_sess_sel[40];   // chosen file name; empty = active session
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -283,12 +295,145 @@ static void power_off_cb(lv_event_t* e)
     lv_obj_clear_flag(btn, LV_OBJ_FLAG_CLICKABLE);  // ignore repeat taps
     lv_timer_create(power_off_timer_cb, 1500, nullptr);
 }
+// ---------------------------------------------------------------------------
+// Session export picker
+// ---------------------------------------------------------------------------
+
+// "survey_19700101_000024_66.csv" -> "000024_66"
+static void sess_short(const char* name, char* buf, size_t n)
+{
+    const char* p = name;
+    if (strncmp(name, "survey_", 7) == 0) p = name + 7;
+    snprintf(buf, n, "%s", p);
+    char* dot = strrchr(buf, '.');
+    if (dot) *dot = 0;
+}
+
+static void sess_refresh_label(void)
+{
+    if (!s_lbl_kml) return;
+    if (s_sess_sel[0]) {
+        char short_n[32];
+        sess_short(s_sess_sel, short_n, sizeof(short_n));
+        char buf[64];
+        snprintf(buf, sizeof(buf), "will export: %s", short_n);
+        lv_label_set_text(s_lbl_kml, buf);
+    } else {
+        lv_label_set_text(s_lbl_kml, "will export: active session");
+    }
+}
+
+// Re-scan the SD card and default the selection to the active session
+// (matches the pre-picker export behavior until the owner picks otherwise).
+static void sess_rescan(void)
+{
+    s_sess_count = csv_list_sessions(s_sess_files, SESS_MAX);
+    s_sess_sel[0] = 0;
+    for (int i = 0; i < s_sess_count; i++) {
+        if (s_sess_files[i].is_active) {
+            snprintf(s_sess_sel, sizeof(s_sess_sel), "%s", s_sess_files[i].name);
+            break;
+        }
+    }
+    sess_refresh_label();
+}
+
+static void sess_pick_cb(lv_event_t* e)
+{
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx >= s_sess_count) return;
+    snprintf(s_sess_sel, sizeof(s_sess_sel), "%s", s_sess_files[idx].name);
+    lv_obj_add_flag(s_sess_modal, LV_OBJ_FLAG_HIDDEN);
+    if (s_panel) lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
+    sess_refresh_label();
+}
+
+static void sess_cancel_cb(lv_event_t*)
+{
+    lv_obj_add_flag(s_sess_modal, LV_OBJ_FLAG_HIDDEN);
+    if (s_panel) lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
+}
+
+static void sess_open_cb(lv_event_t*)
+{
+    if (!s_sess_modal || !s_sess_list) return;
+    lv_obj_clean(s_sess_list);
+    lv_obj_scroll_to_y(s_sess_list, 0, LV_ANIM_OFF);
+    s_sess_count = csv_list_sessions(s_sess_files, SESS_MAX);
+
+    for (int i = 0; i < s_sess_count; i++) {
+        lv_obj_t* row = lv_obj_create(s_sess_list);
+        if (!row) continue;
+        lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_set_size(row, 304, 28);
+        lv_obj_set_pos(row, 0, i * 28);
+        lv_obj_set_style_bg_color(row, lv_color_hex(ui_theme()->row), 0);
+        lv_obj_set_style_bg_opa(row, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_pad_all(row, 2, 0);
+
+        lv_obj_t* lbl = lv_label_create(row);
+        if (lbl) {
+            char short_n[32];
+            sess_short(s_sess_files[i].name, short_n, sizeof(short_n));
+            char buf[72];
+            snprintf(buf, sizeof(buf), "%s%-10s %6lu KB",
+                     s_sess_files[i].is_active ? "* " : "  ",
+                     short_n, (unsigned long)(s_sess_files[i].size / 1024));
+            lv_label_set_text(lbl, buf);
+            lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
+            bool chosen = s_sess_sel[0] &&
+                strcmp(s_sess_files[i].name, s_sess_sel) == 0;
+            // Highlight the current selection; dim others.
+            lv_obj_set_style_text_color(lbl, lv_color_hex(chosen
+                    ? ui_theme()->btn_ok : ui_theme()->text), 0);
+            lv_obj_set_pos(lbl, 4, 4);
+        }
+
+        lv_obj_add_flag(row, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_add_flag(row, LV_OBJ_FLAG_PRESS_LOCK);
+        lv_obj_add_event_cb(row, sess_pick_cb, LV_EVENT_CLICKED, (void*)(intptr_t)i);
+    }
+
+    // Cap visible rows at 4; scroll within the modal if more (OTA pattern)
+    int list_h = s_sess_count * 28;
+    if (list_h < 28) list_h = 28;
+    if (list_h > 112) list_h = 112;
+    lv_obj_set_height(s_sess_list, list_h);
+    if (s_sess_count <= 4) {
+        lv_obj_remove_flag(s_sess_list, LV_OBJ_FLAG_SCROLLABLE);
+    } else {
+        lv_obj_add_flag(s_sess_list, LV_OBJ_FLAG_SCROLLABLE);
+    }
+
+    if (s_sess_empty) {
+        if (s_sess_count == 0) {
+            lv_obj_clear_flag(s_sess_empty, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_add_flag(s_sess_empty, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+
+    if (s_modal) lv_obj_add_flag(s_modal, LV_OBJ_FLAG_HIDDEN);
+    if (s_pick_modal) lv_obj_add_flag(s_pick_modal, LV_OBJ_FLAG_HIDDEN);
+    if (s_ota_modal) lv_obj_add_flag(s_ota_modal, LV_OBJ_FLAG_HIDDEN);
+    if (s_panel) lv_obj_remove_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_remove_flag(s_sess_modal, LV_OBJ_FLAG_HIDDEN);
+}
+
 static void kml_export_cb(lv_event_t*)
 {
     if (!s_lbl_kml) return;
     char path[128];
     int placemarks = 0, nofix = 0;
-    esp_err_t err = kml_export_latest(path, sizeof(path), &placemarks, &nofix);
+    esp_err_t err;
+    if (s_sess_sel[0]) {
+        char csv_path[160];
+        snprintf(csv_path, sizeof(csv_path), "/sdcard/%s", s_sess_sel);
+        err = kml_export_path(csv_path, path, sizeof(path), &placemarks, &nofix);
+    } else {
+        err = kml_export_latest(path, sizeof(path), &placemarks, &nofix);
+    }
     if (err == ESP_ERR_NOT_FOUND) {
         lv_label_set_text(s_lbl_kml, "KML: no session file / no SD");
         return;
@@ -297,9 +442,16 @@ static void kml_export_cb(lv_event_t*)
         lv_label_set_text(s_lbl_kml, "KML export failed");
         return;
     }
-    char buf[48];
-    snprintf(buf, sizeof(buf), "KML: %d APs%s", placemarks,
-             nofix ? " (no GPS)" : "");
+    char buf[72];
+    if (s_sess_sel[0]) {
+        char short_n[32];
+        sess_short(s_sess_sel, short_n, sizeof(short_n));
+        snprintf(buf, sizeof(buf), "KML: %d APs (%s)%s", placemarks, short_n,
+                 nofix ? " noGPS" : "");
+    } else {
+        snprintf(buf, sizeof(buf), "KML: %d APs%s", placemarks,
+                 nofix ? " (no GPS)" : "");
+    }
     lv_label_set_text(s_lbl_kml, buf);
     (void)path;
 }
@@ -309,7 +461,14 @@ static void report_export_cb(lv_event_t*)
     if (!s_lbl_kml) return;
     char path[128];
     int aps = 0;
-    esp_err_t err = report_export_latest(path, sizeof(path), &aps);
+    esp_err_t err;
+    if (s_sess_sel[0]) {
+        char csv_path[160];
+        snprintf(csv_path, sizeof(csv_path), "/sdcard/%s", s_sess_sel);
+        err = report_export_path(csv_path, path, sizeof(path), &aps);
+    } else {
+        err = report_export_latest(path, sizeof(path), &aps);
+    }
     if (err == ESP_ERR_NOT_FOUND) {
         lv_label_set_text(s_lbl_kml, "Report: no session file / no SD");
         return;
@@ -318,8 +477,14 @@ static void report_export_cb(lv_event_t*)
         lv_label_set_text(s_lbl_kml, "Report export failed");
         return;
     }
-    char buf[48];
-    snprintf(buf, sizeof(buf), "Report: %d APs -> SD", aps);
+    char buf[72];
+    if (s_sess_sel[0]) {
+        char short_n[32];
+        sess_short(s_sess_sel, short_n, sizeof(short_n));
+        snprintf(buf, sizeof(buf), "Report: %d APs (%s)", aps, short_n);
+    } else {
+        snprintf(buf, sizeof(buf), "Report: %d APs -> SD", aps);
+    }
     lv_label_set_text(s_lbl_kml, buf);
     (void)path;
 }
@@ -1473,10 +1638,28 @@ lv_obj_t* ui_settings_create(void)
     if (s_panel) {
         lv_obj_t* lbl_kml_title = lv_label_create(s_panel);
         if (lbl_kml_title) {
-            lv_label_set_text(lbl_kml_title, "Google Earth export");
+            lv_label_set_text(lbl_kml_title, "Data export");
             lv_obj_set_style_text_font(lbl_kml_title, &lv_font_montserrat_14, 0);
             lv_obj_set_style_text_color(lbl_kml_title, lv_color_hex(ui_theme()->label), 0);
             lv_obj_set_pos(lbl_kml_title, 8, y + 6);
+        }
+
+        // Session picker: chooses WHICH survey CSV the export buttons
+        // convert. Without a pick, they fall back to the active session.
+        lv_obj_t* btn_sess = lv_btn_create(s_panel);
+        if (btn_sess) {
+            lv_obj_set_size(btn_sess, 136, 24);
+            lv_obj_set_pos(btn_sess, 176, y + 3);
+            lv_obj_set_style_bg_color(btn_sess, lv_color_hex(ui_theme()->btn_blue), 0);
+            lv_obj_set_style_radius(btn_sess, 3, 0);
+            lv_obj_add_event_cb(btn_sess, sess_open_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_t* lbl_sess = lv_label_create(btn_sess);
+            if (lbl_sess) {
+                lv_label_set_text(lbl_sess, "Select session");
+                lv_obj_set_style_text_font(lbl_sess, &lv_font_montserrat_14, 0);
+                lv_obj_set_style_text_color(lbl_sess, lv_color_hex(ui_theme()->text), 0);
+                lv_obj_center(lbl_sess);
+            }
         }
         y += ROW_H + GAP;
 
@@ -1869,6 +2052,66 @@ lv_obj_t* ui_settings_create(void)
         }
     }
 
+    // -----------------------------------------------------------------------
+    // Session export picker modal (created LAST so it blocks everything)
+    // -----------------------------------------------------------------------
+    s_sess_modal = lv_obj_create(s_scr);
+    if (s_sess_modal) {
+        lv_obj_set_size(s_sess_modal, 320, 240);
+        lv_obj_set_pos(s_sess_modal, 0, 0);
+        lv_obj_set_style_bg_color(s_sess_modal, lv_color_hex(ui_theme()->bg), 0);
+        lv_obj_set_style_bg_opa(s_sess_modal, LV_OPA_COVER, 0);
+        lv_obj_set_style_border_width(s_sess_modal, 0, 0);
+        lv_obj_set_style_pad_all(s_sess_modal, 0, 0);
+        lv_obj_add_flag(s_sess_modal, LV_OBJ_FLAG_CLICKABLE);  // block pass-through
+        lv_obj_remove_flag(s_sess_modal, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_add_flag(s_sess_modal, LV_OBJ_FLAG_HIDDEN);
+
+        s_sess_title = lv_label_create(s_sess_modal);
+        if (s_sess_title) {
+            lv_label_set_text(s_sess_title, "Select session to export");
+            lv_obj_set_style_text_font(s_sess_title, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_sess_title, lv_color_hex(ui_theme()->text), 0);
+            lv_obj_align(s_sess_title, LV_ALIGN_TOP_MID, 0, 8);
+        }
+
+        s_sess_list = lv_obj_create(s_sess_modal);
+        if (s_sess_list) {
+            lv_obj_set_size(s_sess_list, 320, 112);
+            lv_obj_set_pos(s_sess_list, 0, 30);
+            lv_obj_set_style_bg_opa(s_sess_list, LV_OPA_TRANSP, 0);
+            lv_obj_set_style_border_width(s_sess_list, 0, 0);
+            lv_obj_set_scroll_dir(s_sess_list, LV_DIR_VER);
+            lv_obj_set_scrollbar_mode(s_sess_list, LV_SCROLLBAR_MODE_OFF);
+        }
+
+        s_sess_empty = lv_label_create(s_sess_modal);
+        if (s_sess_empty) {
+            lv_label_set_text(s_sess_empty, "No sessions on SD card");
+            lv_obj_set_style_text_font(s_sess_empty, &lv_font_montserrat_14, 0);
+            lv_obj_set_style_text_color(s_sess_empty, lv_color_hex(ui_theme()->faint), 0);
+            lv_obj_set_style_text_align(s_sess_empty, LV_TEXT_ALIGN_CENTER, 0);
+            lv_obj_align(s_sess_empty, LV_ALIGN_CENTER, 0, -10);
+            lv_obj_add_flag(s_sess_empty, LV_OBJ_FLAG_HIDDEN);
+        }
+
+        lv_obj_t* btn_scancel = lv_btn_create(s_sess_modal);
+        if (btn_scancel) {
+            lv_obj_set_size(btn_scancel, 130, 28);
+            lv_obj_set_pos(btn_scancel, 95, 200);
+            lv_obj_set_style_bg_color(btn_scancel, lv_color_hex(ui_theme()->btn_del), 0);
+            lv_obj_set_style_radius(btn_scancel, 2, 0);
+            lv_obj_add_event_cb(btn_scancel, sess_cancel_cb, LV_EVENT_CLICKED, nullptr);
+            lv_obj_t* lbl_scancel = lv_label_create(btn_scancel);
+            if (lbl_scancel) {
+                lv_label_set_text(lbl_scancel, "Cancel");
+                lv_obj_set_style_text_font(lbl_scancel, &lv_font_montserrat_14, 0);
+                lv_obj_set_style_text_color(lbl_scancel, lv_color_hex(ui_theme()->text), 0);
+                lv_obj_center(lbl_scancel);
+            }
+        }
+    }
+
     // Load current config
     const AlertConfig_t* cfg = alert_config_get();
     s_cfg = *cfg;
@@ -1886,6 +2129,7 @@ lv_obj_t* ui_settings_create(void)
     refresh_bssid_list();
     refresh_power_labels();
     refresh_filter_labels();
+    sess_rescan();   // default export target = active session
 
     return s_scr;
 }
@@ -1908,6 +2152,7 @@ void ui_settings_set_visible(bool visible)
         refresh_bssid_list();
         refresh_power_labels();
         refresh_filter_labels();
+        sess_rescan();   // SD contents may have changed since last visit
 
         // Reset scroll state for smooth entry
         if (s_panel) {
@@ -1931,6 +2176,9 @@ void ui_settings_set_visible(bool visible)
         }
         if (s_ota_modal) {
             lv_obj_add_flag(s_ota_modal, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (s_sess_modal) {
+            lv_obj_add_flag(s_sess_modal, LV_OBJ_FLAG_HIDDEN);
         }
         if (s_panel) {
             lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
