@@ -54,7 +54,8 @@ typedef struct {
 // (mtime desc, file-name desc as tiebreak — same rule as csv_find_latest,
 // with the same no-RTC caveat: across boots, "newest" is a heuristic).
 // The currently-active session is flagged. out must hold max entries.
-// Returns the number of sessions written (0 = no SD / none / bad args).
+// Returns the number of sessions written (0 = none found), or -1 if the
+// SD card directory cannot be opened at all (absent / not mounted).
 int csv_list_sessions(CsvSession* out, int max);
 
 // Growable table of unique APs keyed by MAC, allocated from PSRAM.
