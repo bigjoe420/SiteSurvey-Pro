@@ -69,7 +69,7 @@ bool csv_find_latest(char* out_path, size_t n)
 
 int csv_list_sessions(CsvSession* out, int max)
 {
-    if (!out || max <= 0) return 0;
+    if (!out || max <= 0) return -1;
 
     // Active session basename (if the pointer file exists) for marking.
     char active[40] = {0};
@@ -86,7 +86,10 @@ int csv_list_sessions(CsvSession* out, int max)
     }
 
     DIR* d = opendir(SD_DIR);
-    if (!d) return 0;
+    if (!d) {
+        ESP_LOGW(TAG, "opendir(%s) failed — SD absent or not mounted", SD_DIR);
+        return -1;
+    }
     int n = 0;
     struct dirent* de;
     while ((de = readdir(d)) != nullptr && n < max) {

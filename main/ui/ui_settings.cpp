@@ -360,6 +360,9 @@ static void sess_open_cb(lv_event_t*)
     lv_obj_clean(s_sess_list);
     lv_obj_scroll_to_y(s_sess_list, 0, LV_ANIM_OFF);
     s_sess_count = csv_list_sessions(s_sess_files, SESS_MAX);
+    bool sd_error = s_sess_count < 0;
+    ESP_LOGI("settings", "session picker: scan -> %d sessions", s_sess_count);
+    if (sd_error) s_sess_count = 0;   // keep the row loop safe
 
     for (int i = 0; i < s_sess_count; i++) {
         lv_obj_t* row = lv_obj_create(s_sess_list);
@@ -408,6 +411,11 @@ static void sess_open_cb(lv_event_t*)
 
     if (s_sess_empty) {
         if (s_sess_count == 0) {
+            // Distinguish "card not available" from "card has no sessions" —
+            // the scan already logged the reason over serial.
+            lv_label_set_text(s_sess_empty,
+                sd_error ? "SD card not available\nReboot after inserting card"
+                         : "No session files on SD card");
             lv_obj_clear_flag(s_sess_empty, LV_OBJ_FLAG_HIDDEN);
         } else {
             lv_obj_add_flag(s_sess_empty, LV_OBJ_FLAG_HIDDEN);
