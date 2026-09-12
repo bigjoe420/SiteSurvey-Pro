@@ -34,7 +34,7 @@ typedef struct {
 } Gauge;
 
 // Band colors are filled at screen creation (ui_env_init_gauge_colors) —
-// the palette is only known at runtime once the outdoor flag is applied.
+// the palette comes from the theme at runtime.
 static Band TEMP_BANDS[4];
 static Band HUM_BANDS[4];
 static Band VOC_BANDS[3];
@@ -276,7 +276,7 @@ lv_obj_t* ui_env_create(void)
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_bg_color(scr, lv_color_black(), 0);
 
-    // Theme-dependent gauge colors (palette known once outdoor flag applied)
+    // Theme-dependent gauge colors (resolved from ui_theme at runtime)
     ui_env_init_gauge_colors();
     s_gauges[2].grad_a = THM_TEAL;
     s_gauges[2].grad_b = THM_BLUE2;

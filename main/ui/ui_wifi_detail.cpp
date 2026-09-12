@@ -20,7 +20,7 @@ static bool s_visible = false;
 static uint8_t s_bssid[6];
 
 // ROADMAP §5 tiers: Strong green, Moderate yellow, Weak orange, Marginal red
-// — resolved through ui_theme_tier_color() so outdoor mode gets brighter tiers
+// — resolved through ui_theme_tier_color()
 
 static int tier_for_rssi(int8_t rssi)
 {

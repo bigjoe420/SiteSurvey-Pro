@@ -58,7 +58,7 @@ static bool s_env_has_snap;
 static bool s_env_bme_present;
 
 // ROADMAP §5 tiers: Strong green, Moderate yellow, Weak orange, Marginal red
-// (resolved through the theme so outdoor mode gets brighter tiers)
+// (resolved through the theme so tiers can be tuned in one place)
 
 #define ROW_H       30
 #define ROW_STRIDE  32
