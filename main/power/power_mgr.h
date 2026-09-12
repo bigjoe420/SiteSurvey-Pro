@@ -15,7 +15,6 @@
 #define SSP_PM_NVS_KEY_DIM     "bl_dim"
 #define SSP_PM_NVS_KEY_SLEEP   "ls_enable"
 #define SSP_PM_NVS_KEY_AUTOOFF "auto_off"
-#define SSP_PM_NVS_KEY_OUTDOOR "outdoor"
 
 typedef enum {
     SSP_PM_BL_OFF = 0,
@@ -57,13 +56,6 @@ void power_mgr_set_sleep_en(bool en);
 // default — a unit left scanning a site must not stop logging on its own.
 uint16_t power_mgr_get_auto_off_min(void);
 void     power_mgr_set_auto_off_min(uint16_t minutes);
-
-// Outdoor (high-contrast) mode: brighter UI palette + raised backlight dim
-// floor (the screen dims but never turns fully off, so the unit stays
-// glanceable in sunlight). Applied in full at next boot (UI palette is baked
-// at screen creation); the backlight behavior applies immediately.
-bool power_mgr_get_outdoor(void);
-void power_mgr_set_outdoor(bool en);
 
 // Full power off: backlight off, then deep sleep. Wake by pressing the BOOT
 // button (GPIO0, held low). Consumes only RTC-domain power while off.

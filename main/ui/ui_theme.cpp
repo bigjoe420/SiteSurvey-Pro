@@ -1,7 +1,10 @@
 #include "ui_theme.h"
 
-// Indoor palette — the original SiteSurvey Pro look (dark, cyan accent).
-static const ssp_palette_t s_pal_indoor = {
+// Single dark high-contrast palette — the original SiteSurvey Pro look
+// (dark, cyan accent). Owner decision 2026-09-12: the outdoor light theme
+// was removed (visibility regressions, no owner value); the palette stays
+// struct theme-driven so every screen reads colors from one place.
+static const ssp_palette_t s_palette = {
     .bg     = 0x000000,
     .row    = 0x1A1A1A,
     .track  = 0x1E1E1E,
@@ -30,52 +33,7 @@ static const ssp_palette_t s_pal_indoor = {
     .btn_blue = 0x1F4E79,
 };
 
-// Outdoor palette — daylight light theme. Direct sunlight kills emissive
-// dark UIs; black-on-white with darkened accents/tiers is the readable
-// configuration. Every screen is palette-driven, so these values re-theme
-// the whole app at boot.
-static const ssp_palette_t s_pal_outdoor = {
-    .bg     = 0xFFFFFF,
-    .row    = 0xE4E4E4,
-    .track  = 0x303030,
-    .btn    = 0xD2D2D2,
-    .grid   = 0xB0B0B0,
-    .border = 0x8A8A8A,
-    .text   = 0x000000,
-    .label  = 0x1A1A1A,
-    .sub    = 0x3A3A3A,
-    .faint  = 0x5E5E5E,
-    .accent = 0xFF8F00,
-    .ok       = 0x1B8A3C,
-    .ok_mid   = 0x558B2F,
-    .ok_hi    = 0x00A152,
-    .warn     = 0xF9A825,
-    .yellow   = 0xF9A825,
-    .orange   = 0xEF6C00,
-    .bad      = 0xC62828,
-    .bad_soft = 0xD32F2F,
-    .cyan  = 0x00838F,
-    .blue  = 0x1565C0,
-    .blue2 = 0x1565C0,
-    .teal  = 0x00695C,
-    .btn_ok   = 0x2E7D32,
-    .btn_del  = 0xB71C1C,
-    .btn_blue = 0x1F4E79,
-};
-
-static bool s_outdoor;
-
-void ui_theme_set_outdoor(bool outdoor)
-{
-    s_outdoor = outdoor;
-}
-
-bool ui_theme_outdoor(void)
-{
-    return s_outdoor;
-}
-
 const ssp_palette_t* ui_theme(void)
 {
-    return s_outdoor ? &s_pal_outdoor : &s_pal_indoor;
+    return &s_palette;
 }

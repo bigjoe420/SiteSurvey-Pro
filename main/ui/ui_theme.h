@@ -5,16 +5,10 @@
 #include "lvgl.h"
 
 // ---------------------------------------------------------------------------
-// UI theme — indoor vs outdoor (high-contrast, sunlight-readable) palettes.
-//
-// The outdoor palette raises every gray toward white, swaps the cyan accent
-// for amber, and brightens the semantic tier colors. The palette is stored as
-// raw hex values so both tables are compile-time constants; the THM_* macros
-// convert on use (cheap, and screens read them at creation time on the UI task).
-//
-// The outdoor flag itself is owned by power_mgr (NVS-persisted, loaded at
-// boot on the main task before the UI exists); main.cpp calls
-// ui_theme_set_outdoor() once before the UI task starts.
+// UI theme — single dark high-contrast palette (owner decision 2026-09-12:
+// the outdoor light theme was removed). The palette is stored as raw hex
+// values as a compile-time constant; the THM_* macros convert on use (cheap,
+// and screens read them at creation time on the UI task).
 // ---------------------------------------------------------------------------
 
 typedef struct {
@@ -51,12 +45,6 @@ typedef struct {
     uint32_t btn_del;   // delete / cancel / power off
     uint32_t btn_blue;  // export
 } ssp_palette_t;
-
-// Select palette. Call once at boot before any screen is created.
-void ui_theme_set_outdoor(bool outdoor);
-
-// Current selection.
-bool ui_theme_outdoor(void);
 
 // Active palette (never returns nullptr).
 const ssp_palette_t* ui_theme(void);
