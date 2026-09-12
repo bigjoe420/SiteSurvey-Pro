@@ -30,35 +30,37 @@ static const ssp_palette_t s_pal_indoor = {
     .btn_blue = 0x1F4E79,
 };
 
-// Outdoor palette — high contrast for direct sunlight: grays pushed toward
-// white, amber accent (reads better than cyan in daylight), saturated tiers.
+// Outdoor palette — daylight light theme. Direct sunlight kills emissive
+// dark UIs; black-on-white with darkened accents/tiers is the readable
+// configuration. Every screen is palette-driven, so these values re-theme
+// the whole app at boot.
 static const ssp_palette_t s_pal_outdoor = {
-    .bg     = 0x000000,
-    .row    = 0x2E2E2E,
-    .track  = 0x2E2E2E,
-    .btn    = 0x505050,
-    .grid   = 0x5C5C5C,
-    .border = 0x4A4A4A,
-    .text   = 0xFFFFFF,
-    .label  = 0xE8E8E8,
-    .sub    = 0xCFCFCF,
-    .faint  = 0xA8A8A8,
-    .accent = 0xFFD600,
-    .ok       = 0x00E676,
-    .ok_mid   = 0x76FF03,
-    .ok_hi    = 0x00E676,
-    .warn     = 0xFFD600,
-    .yellow   = 0xFFEA00,
-    .orange   = 0xFF9100,
-    .bad      = 0xFF1744,
-    .bad_soft = 0xFF5252,
-    .cyan  = 0x00E5FF,
-    .blue  = 0x448AFF,
-    .blue2 = 0x448AFF,
-    .teal  = 0x64FFDA,
-    .btn_ok   = 0x00A152,
-    .btn_del  = 0xD50000,
-    .btn_blue = 0x1565C0,
+    .bg     = 0xFFFFFF,
+    .row    = 0xE4E4E4,
+    .track  = 0x303030,
+    .btn    = 0xD2D2D2,
+    .grid   = 0xB0B0B0,
+    .border = 0x8A8A8A,
+    .text   = 0x000000,
+    .label  = 0x1A1A1A,
+    .sub    = 0x3A3A3A,
+    .faint  = 0x5E5E5E,
+    .accent = 0xFF8F00,
+    .ok       = 0x1B8A3C,
+    .ok_mid   = 0x558B2F,
+    .ok_hi    = 0x00A152,
+    .warn     = 0xF9A825,
+    .yellow   = 0xF9A825,
+    .orange   = 0xEF6C00,
+    .bad      = 0xC62828,
+    .bad_soft = 0xD32F2F,
+    .cyan  = 0x00838F,
+    .blue  = 0x1565C0,
+    .blue2 = 0x1565C0,
+    .teal  = 0x00695C,
+    .btn_ok   = 0x2E7D32,
+    .btn_del  = 0xB71C1C,
+    .btn_blue = 0x1F4E79,
 };
 
 static bool s_outdoor;

@@ -1505,10 +1505,13 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_pos(btn_pwr, 80, y);
             lv_obj_set_style_bg_color(btn_pwr, lv_color_hex(ui_theme()->btn_del), 0);
             lv_obj_set_style_radius(btn_pwr, 3, 0);
-            lv_obj_add_event_cb(btn_pwr, power_off_cb, LV_EVENT_CLICKED, nullptr);
+            // LONG_PRESS, not CLICKED: it sits at the bottom of a scrollable
+            // list, and a scroll stroke that lands on it must not power the
+            // unit off. A deliberate 1 s hold is required.
+            lv_obj_add_event_cb(btn_pwr, power_off_cb, LV_EVENT_LONG_PRESSED, nullptr);
             lv_obj_t* lbl_pwr = lv_label_create(btn_pwr);
             if (lbl_pwr) {
-                lv_label_set_text(lbl_pwr, "Power Off");
+                lv_label_set_text(lbl_pwr, "Hold 1s to Power Off");
                 lv_obj_set_style_text_font(lbl_pwr, &lv_font_montserrat_14, 0);
                 lv_obj_set_style_text_color(lbl_pwr, lv_color_white(), 0);
                 lv_obj_center(lbl_pwr);
@@ -1665,7 +1668,7 @@ lv_obj_t* ui_settings_create(void)
     if (s_modal) {
         lv_obj_set_size(s_modal, 320, 240);
         lv_obj_set_pos(s_modal, 0, 0);
-        lv_obj_set_style_bg_color(s_modal, lv_color_hex(0x000000), 0);
+        lv_obj_set_style_bg_color(s_modal, lv_color_hex(ui_theme()->bg), 0);
         lv_obj_set_style_bg_opa(s_modal, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(s_modal, 0, 0);
         lv_obj_set_style_pad_all(s_modal, 0, 0);
@@ -1758,7 +1761,7 @@ lv_obj_t* ui_settings_create(void)
     if (s_pick_modal) {
         lv_obj_set_size(s_pick_modal, 320, 240);
         lv_obj_set_pos(s_pick_modal, 0, 0);
-        lv_obj_set_style_bg_color(s_pick_modal, lv_color_hex(0x000000), 0);
+        lv_obj_set_style_bg_color(s_pick_modal, lv_color_hex(ui_theme()->bg), 0);
         lv_obj_set_style_bg_opa(s_pick_modal, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(s_pick_modal, 0, 0);
         lv_obj_set_style_pad_all(s_pick_modal, 0, 0);
@@ -1838,7 +1841,7 @@ lv_obj_t* ui_settings_create(void)
     if (s_ota_modal) {
         lv_obj_set_size(s_ota_modal, 320, 240);
         lv_obj_set_pos(s_ota_modal, 0, 0);
-        lv_obj_set_style_bg_color(s_ota_modal, lv_color_hex(0x000000), 0);
+        lv_obj_set_style_bg_color(s_ota_modal, lv_color_hex(ui_theme()->bg), 0);
         lv_obj_set_style_bg_opa(s_ota_modal, LV_OPA_COVER, 0);
         lv_obj_set_style_border_width(s_ota_modal, 0, 0);
         lv_obj_set_style_pad_all(s_ota_modal, 0, 0);
