@@ -29,11 +29,6 @@ static const char* TAG = "power_mgr";
 #define DEFAULT_DIM_PCT     25
 #define DEFAULT_SLEEP_EN    false
 #define DEFAULT_AUTOOFF_MIN 0
-#define DEFAULT_OUTDOOR     false
-
-// Outdoor mode: the dim level never drops below this, and the backlight-off
-// stage is skipped entirely — a survey unit in the field must stay glanceable.
-#define OUTDOOR_DIM_FLOOR_PCT 35
 
 // State
 static volatile ssp_pm_bl_state_t s_bl_state = SSP_PM_BL_FULL;
@@ -41,7 +36,6 @@ static uint8_t  s_dim_pct     = DEFAULT_DIM_PCT;
 static uint16_t s_timeout_s   = DEFAULT_TIMEOUT_S;
 static bool     s_sleep_en    = DEFAULT_SLEEP_EN;
 static uint16_t s_auto_off_min = DEFAULT_AUTOOFF_MIN;
-static bool     s_outdoor     = DEFAULT_OUTDOOR;
 static uint32_t s_last_activity_ms = 0;
 static bool     s_initialized = false;
 
@@ -57,7 +51,6 @@ static void nvs_load(void)
     s_dim_pct      = DEFAULT_DIM_PCT;
     s_sleep_en     = DEFAULT_SLEEP_EN;
     s_auto_off_min = DEFAULT_AUTOOFF_MIN;
-    s_outdoor      = DEFAULT_OUTDOOR;
 
     if (s_nvs == 0) return;
 
@@ -65,19 +58,16 @@ static void nvs_load(void)
     int32_t d = DEFAULT_DIM_PCT;
     uint8_t e = DEFAULT_SLEEP_EN ? 1 : 0;
     int32_t a = DEFAULT_AUTOOFF_MIN;
-    uint8_t o = DEFAULT_OUTDOOR ? 1 : 0;
 
     nvs_get_i32(s_nvs, SSP_PM_NVS_KEY_TIMEOUT, &t);
     nvs_get_i32(s_nvs, SSP_PM_NVS_KEY_DIM, &d);
     nvs_get_u8 (s_nvs, SSP_PM_NVS_KEY_SLEEP, &e);
     nvs_get_i32(s_nvs, SSP_PM_NVS_KEY_AUTOOFF, &a);
-    nvs_get_u8 (s_nvs, SSP_PM_NVS_KEY_OUTDOOR, &o);
 
     s_timeout_s    = (uint16_t)t;
     s_dim_pct      = (uint8_t) d;
     s_sleep_en     = (e != 0);
     s_auto_off_min = (uint16_t)a;
-    s_outdoor      = (o != 0);
 }
 
 static void nvs_save_now(void)
@@ -87,7 +77,6 @@ static void nvs_save_now(void)
     nvs_set_i32(s_nvs, SSP_PM_NVS_KEY_DIM,     (int32_t)s_dim_pct);
     nvs_set_u8 (s_nvs, SSP_PM_NVS_KEY_SLEEP,   s_sleep_en ? 1 : 0);
     nvs_set_i32(s_nvs, SSP_PM_NVS_KEY_AUTOOFF, (int32_t)s_auto_off_min);
-    nvs_set_u8 (s_nvs, SSP_PM_NVS_KEY_OUTDOOR, s_outdoor ? 1 : 0);
     nvs_commit(s_nvs);
 }
 
@@ -137,17 +126,11 @@ static void idle_timer_cb(TimerHandle_t)
 
     uint32_t timeout_ms = s_timeout_s * 1000U;
 
-    // Outdoor mode: dim to a raised floor and never turn the backlight fully
-    // off — a field unit must stay readable at a glance.
-    uint8_t dim_pct = s_dim_pct;
-    if (s_outdoor && dim_pct < OUTDOOR_DIM_FLOOR_PCT) dim_pct = OUTDOOR_DIM_FLOOR_PCT;
-
     if (s_bl_state == SSP_PM_BL_FULL && idle_ms >= timeout_ms) {
         s_bl_state = SSP_PM_BL_DIM;
-        bl_apply(dim_pct);
-        ESP_LOGI(TAG, "idle → dim (%u%%)", dim_pct);
-    } else if (!s_outdoor &&
-               s_bl_state == SSP_PM_BL_DIM && idle_ms >= timeout_ms * 2) {
+        bl_apply(s_dim_pct);
+        ESP_LOGI(TAG, "idle → dim (%u%%)", s_dim_pct);
+    } else if (s_bl_state == SSP_PM_BL_DIM && idle_ms >= timeout_ms * 2) {
         s_bl_state = SSP_PM_BL_OFF;
         bl_apply(0);
         ESP_LOGI(TAG, "idle → off");
@@ -201,9 +184,8 @@ esp_err_t power_mgr_init(void)
     s_idle_timer = xTimerCreate("pm_idle", pdMS_TO_TICKS(1000), pdTRUE,
                                 nullptr, idle_timer_cb);
     if (s_idle_timer) xTimerStart(s_idle_timer, 0);
-    ESP_LOGI(TAG, "init ok: timeout=%us dim=%u%% sleep=%s outdoor=%s",
-             s_timeout_s, s_dim_pct, s_sleep_en ? "on" : "off",
-             s_outdoor ? "on" : "off");
+    ESP_LOGI(TAG, "init ok: timeout=%us dim=%u%% sleep=%s",
+             s_timeout_s, s_dim_pct, s_sleep_en ? "on" : "off");
     return ESP_OK;
 }
 
@@ -266,17 +248,6 @@ void power_mgr_set_auto_off_min(uint16_t minutes)
     s_auto_off_min = minutes;
     nvs_save();
     s_last_activity_ms = pdTICKS_TO_MS(xTaskGetTickCount());
-}
-
-bool power_mgr_get_outdoor(void) { return s_outdoor; }
-void power_mgr_set_outdoor(bool en)
-{
-    s_outdoor = en;
-    nvs_save();
-    // If a dim is already active, lift it to the outdoor floor immediately.
-    if (en && s_bl_state == SSP_PM_BL_DIM && s_dim_pct < OUTDOOR_DIM_FLOOR_PCT) {
-        bl_apply(OUTDOOR_DIM_FLOOR_PCT);
-    }
 }
 
 void power_mgr_power_off(void)
