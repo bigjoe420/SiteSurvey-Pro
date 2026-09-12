@@ -49,12 +49,14 @@ static uint16_t read_averaged(uint8_t cmd)
     return acc / 3;
 }
 
-// Linear map between two measured anchors, clamped to [0, out_max]
+// Linear map between two measured anchors, extrapolated linearly to the panel
+// edge and clamped to [0, out_max]. Clamping at the anchor values instead
+// (the old behavior) created a 24 px dead band at every screen edge where the
+// reported coordinate froze — a drag into the band stalled, which made
+// upward scroll strokes (finger ends near the bottom edge) nearly impossible.
 static int16_t map_anchored(int32_t v, int32_t raw_hi, int32_t raw_lo,
                             int16_t out_lo, int16_t out_hi, int16_t out_max)
 {
-    if (v >= raw_hi) return out_lo;
-    if (v <= raw_lo) return out_hi;
     int32_t r = out_lo + (raw_hi - v) * (out_hi - out_lo) / (raw_hi - raw_lo);
     if (r < 0) return 0;
     if (r > out_max) return out_max;
@@ -87,17 +89,49 @@ bool touch_read_raw(uint16_t* raw_x, uint16_t* raw_y)
 
 bool touch_read(int16_t* x, int16_t* y)
 {
+    static int16_t s_last_x = 0, s_last_y = 0;
+    static bool    s_had_contact = false;
+    static uint8_t s_reject_n = 0;
+
     uint16_t raw_x, raw_y;
     if (!touch_read_raw(&raw_x, &raw_y)) {
+        s_had_contact = false;
         return false;
     }
 
     // Measured mapping (board_pins.h): raw Y -> screen X, raw X -> screen Y,
     // both channels decrease as the screen coordinate increases
-    *x = map_anchored(raw_y, SSP_TOUCH_RAWY_LEFT, SSP_TOUCH_RAWY_RIGHT,
-                      SSP_TOUCH_ANCHOR_MIN, SSP_TOUCH_ANCHOR_MAX_X, SSP_TFT_WIDTH - 1);
-    *y = map_anchored(raw_x, SSP_TOUCH_RAWX_TOP, SSP_TOUCH_RAWX_BOTTOM,
-                      SSP_TOUCH_ANCHOR_MIN, SSP_TOUCH_ANCHOR_MAX_Y, SSP_TFT_HEIGHT - 1);
+    int16_t mx = map_anchored(raw_y, SSP_TOUCH_RAWY_LEFT, SSP_TOUCH_RAWY_RIGHT,
+                              SSP_TOUCH_ANCHOR_MIN, SSP_TOUCH_ANCHOR_MAX_X, SSP_TFT_WIDTH - 1);
+    int16_t my = map_anchored(raw_x, SSP_TOUCH_RAWX_TOP, SSP_TOUCH_RAWX_BOTTOM,
+                              SSP_TOUCH_ANCHOR_MIN, SSP_TOUCH_ANCHOR_MAX_Y, SSP_TFT_HEIGHT - 1);
+
+    // Spike rejection. The XPT2046 contact bounces on press (first samples
+    // read up to 160 px off) and drops a garbage sample mid-drag under SPI
+    // contention; either one yanks the LVGL scroll position. A real drag
+    // moves at most ~72 px per 20 ms sample. A rejected sample reports the
+    // last good coordinate (finger holds still) — invisible in the UI. If
+    // rejects persist 3 samples the new position is real (press baseline was
+    // the junk), so accept it and re-base.
+    if (s_had_contact) {
+        int dx = mx - s_last_x; if (dx < 0) dx = -dx;
+        int dy = my - s_last_y; if (dy < 0) dy = -dy;
+        if (dx > 72 || dy > 72) {
+            if (++s_reject_n < 3) {
+                *x = s_last_x;
+                *y = s_last_y;
+                return true;   // hold last good position, stay pressed
+            }
+            s_reject_n = 0;    // persistent: baseline was junk, accept new pos
+        } else {
+            s_reject_n = 0;
+        }
+    }
+    s_had_contact = true;
+    s_last_x = mx;
+    s_last_y = my;
+    *x = mx;
+    *y = my;
     return true;
 }
 
