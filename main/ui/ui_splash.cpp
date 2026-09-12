@@ -1,4 +1,5 @@
 #include "ui_splash.h"
+#include "ui_theme.h"
 
 #include "esp_log.h"
 
@@ -109,7 +110,7 @@ void ui_splash_show(splash_done_cb_t done_cb)
     lv_obj_t* title = lv_label_create(scr);
     lv_label_set_text(title, "SiteSurvey Pro");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_20, 0);
-    lv_obj_set_style_text_color(title, lv_color_white(), 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(ui_theme()->text), 0);
     lv_obj_set_style_text_opa(title, LV_OPA_TRANSP, 0);
     lv_obj_align(title, LV_ALIGN_CENTER, 0, -12);
 

@@ -106,7 +106,7 @@ static void build_row(lv_obj_t* parent, Row* r, int idx)
     r->ssid = lv_label_create(r->row);
     lv_obj_set_size(r->ssid, COL_SSID_W, LV_SIZE_CONTENT);
     lv_label_set_long_mode(r->ssid, LV_LABEL_LONG_CLIP);
-    lv_obj_set_style_text_color(r->ssid, lv_color_white(), 0);
+    lv_obj_set_style_text_color(r->ssid, lv_color_hex(ui_theme()->text), 0);
     lv_obj_set_pos(r->ssid, COL_SSID_X, (ROW_H - lv_font_get_line_height(&lv_font_montserrat_14)) / 2);
 
     r->info = lv_label_create(r->row);
