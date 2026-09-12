@@ -87,7 +87,7 @@ Hardware verification and board support package (BSP) establishment completed.
 ### Phase 3: Polish & Hardening — 🟡 ACTIVE
 - [x] On-device RSSI graphing (RSSI over time per AP) — detail chart since 2026-09-04; upgraded 2026-09-10: 64-sample (~5 min) window, min/max/avg stats, grid + dBm corner labels, live tier color
 - [x] Power management & battery life optimization — partial 2026-09-11: idle dim (31.8 s), auto power-off presets (0/15/30/60/120 min, NVS-persisted, deep sleep on touch-idle, BOOT wake), power-off button — verified on-device (commit `01209ac`); battery sensing still hardware-blocked (no battery connector)
-- [x] UI themes (outdoor high-contrast mode) — verified on-device 2026-09-11 (commit `e265bad`): `ui_theme` module, Settings toggle, NVS-persisted via flash_broker, dim floor 35%, display never fully off in outdoor mode
+- [x] UI theme system — landed 2026-09-11 (`e265bad`): `ui_theme` module, single dark palette, tier colors resolved through `ui_theme_tier_color()`. Outdoor light variant was added 2026-09-11 and removed 2026-09-12 per owner decision (`3da7e7c`) — white-on-white visibility regressions, dark UI is permanent
 - [x] Configurable scan filters (by RSSI threshold, SSID pattern, 2.4/5 GHz band) — verified on-device 2026-09-07
 - [x] Firmware update mechanism — SD-card OTA via esp_ota_ops, version-aware picker — verified boot 2026-09-10 (commits `bb1072e`, `7a3cbac`, `9d42e1e`, tag `v0.9.0`)
 - [x] On-device scan report generation — Settings → Data export → Export Report writes `<session>.txt` (observations, bands, channels, strongest/weakest, security, coverage); VERIFIED on-device 2026-09-11 (commit `e6dfb63`)
@@ -185,7 +185,7 @@ Hardware verification and board support package (BSP) establishment completed.
 | SD card on shared SPI2 | Verified | 32 GB card mounted; write/read self-test OK. |
 | PSRAM LVGL pool | Resolved 2026-09-04 | 256 KB secondary pool + TLSF max pool fix; ASSERT_NULL disabled. |
 | RGB LED | Verified 2026-09-04 | RMT driver on GPIO27; red flash on alert match confirmed on-device. |
-| GPS module | Pending hardware | Original module dead (no power LED); replacement bring-up + outdoor fix test deferred to next session (2026-09-11) |
+| GPS module | Bring-up done 2026-09-12 | Replacement module live: q=2 fix (3-6 sats) indoors, NMEA clean; outdoor field test (q=3 + CSV/KML coordinates) pending owner walk |
 | GPIO 8/9 I2C conflict | Known | Also used for CC1101/NRF24 in Bruce firmware. Reserved for I2C only. |
 | Deepsleep wake GPIO | Known | GPIO 0 is wake source. Must be HIGH at boot. |
 
