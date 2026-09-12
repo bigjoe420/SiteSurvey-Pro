@@ -185,7 +185,7 @@ Hardware verification and board support package (BSP) establishment completed.
 | SD card on shared SPI2 | Verified | 32 GB card mounted; write/read self-test OK. |
 | PSRAM LVGL pool | Resolved 2026-09-04 | 256 KB secondary pool + TLSF max pool fix; ASSERT_NULL disabled. |
 | RGB LED | Verified 2026-09-04 | RMT driver on GPIO27; red flash on alert match confirmed on-device. |
-| GPS module | Bring-up done 2026-09-12 | Replacement module live: q=2 fix (3-6 sats) indoors, NMEA clean; outdoor field test (q=3 + CSV/KML coordinates) pending owner walk |
+| GPS module | Verified 2026-09-12 | Replacement module: NMEA clean; owner walk test DONE — session 000132: 44 min, 715 rows, 90% with q=2 (DGPS, best NMEA GGA offers — q=3 does not exist) fixes up to 11 sats, trajectory matches the walked loop; KML placemarks validated |
 | GPIO 8/9 I2C conflict | Known | Also used for CC1101/NRF24 in Bruce firmware. Reserved for I2C only. |
 | Deepsleep wake GPIO | Known | GPIO 0 is wake source. Must be HIGH at boot. |
 
