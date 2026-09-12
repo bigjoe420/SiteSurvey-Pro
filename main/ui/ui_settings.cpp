@@ -975,7 +975,7 @@ static lv_obj_t* make_target_row(lv_obj_t* parent, int y, lv_event_cb_t edit_cb,
         if (edit_lbl) {
             lv_label_set_text(edit_lbl, "E");
             lv_obj_set_style_text_font(edit_lbl, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(edit_lbl, lv_color_white(), 0);
+            lv_obj_set_style_text_color(edit_lbl, lv_color_hex(ui_theme()->text), 0);
             lv_obj_center(edit_lbl);
         }
     }
@@ -993,7 +993,7 @@ static lv_obj_t* make_target_row(lv_obj_t* parent, int y, lv_event_cb_t edit_cb,
         if (del_lbl) {
             lv_label_set_text(del_lbl, "X");
             lv_obj_set_style_text_font(del_lbl, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(del_lbl, lv_color_white(), 0);
+            lv_obj_set_style_text_color(del_lbl, lv_color_hex(ui_theme()->text), 0);
             lv_obj_center(del_lbl);
         }
     }
@@ -1152,7 +1152,7 @@ lv_obj_t* ui_settings_create(void)
             if (lbl_ssid_add) {
                 lv_label_set_text(lbl_ssid_add, "+ Add SSID");
                 lv_obj_set_style_text_font(lbl_ssid_add, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(lbl_ssid_add, lv_color_white(), 0);
+                lv_obj_set_style_text_color(lbl_ssid_add, lv_color_hex(ui_theme()->text), 0);
                 lv_obj_center(lbl_ssid_add);
             }
         }
@@ -1189,7 +1189,7 @@ lv_obj_t* ui_settings_create(void)
             if (lbl_bssid_add) {
                 lv_label_set_text(lbl_bssid_add, "+ Add BSSID");
                 lv_obj_set_style_text_font(lbl_bssid_add, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(lbl_bssid_add, lv_color_white(), 0);
+                lv_obj_set_style_text_color(lbl_bssid_add, lv_color_hex(ui_theme()->text), 0);
                 lv_obj_center(lbl_bssid_add);
             }
         }
@@ -1513,7 +1513,7 @@ lv_obj_t* ui_settings_create(void)
             if (lbl_pwr) {
                 lv_label_set_text(lbl_pwr, "Hold 1s to Power Off");
                 lv_obj_set_style_text_font(lbl_pwr, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(lbl_pwr, lv_color_white(), 0);
+                lv_obj_set_style_text_color(lbl_pwr, lv_color_hex(ui_theme()->text), 0);
                 lv_obj_center(lbl_pwr);
             }
         }
@@ -1542,7 +1542,7 @@ lv_obj_t* ui_settings_create(void)
             if (lbl_btn) {
                 lv_label_set_text(lbl_btn, "Export KML");
                 lv_obj_set_style_text_font(lbl_btn, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(lbl_btn, lv_color_white(), 0);
+                lv_obj_set_style_text_color(lbl_btn, lv_color_hex(ui_theme()->text), 0);
                 lv_obj_center(lbl_btn);
             }
         }
@@ -1558,7 +1558,7 @@ lv_obj_t* ui_settings_create(void)
             if (lbl_rep) {
                 lv_label_set_text(lbl_rep, "Export Report");
                 lv_obj_set_style_text_font(lbl_rep, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(lbl_rep, lv_color_white(), 0);
+                lv_obj_set_style_text_color(lbl_rep, lv_color_hex(ui_theme()->text), 0);
                 lv_obj_center(lbl_rep);
             }
         }
@@ -1607,7 +1607,7 @@ lv_obj_t* ui_settings_create(void)
             if (lbl_ota) {
                 lv_label_set_text(lbl_ota, "Update from SD");
                 lv_obj_set_style_text_font(lbl_ota, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(lbl_ota, lv_color_white(), 0);
+                lv_obj_set_style_text_color(lbl_ota, lv_color_hex(ui_theme()->text), 0);
                 lv_obj_center(lbl_ota);
             }
         }
@@ -1627,7 +1627,7 @@ lv_obj_t* ui_settings_create(void)
             if (lbl_clear) {
                 lv_label_set_text(lbl_clear, "Clear Alert Log");
                 lv_obj_set_style_text_font(lbl_clear, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(lbl_clear, lv_color_white(), 0);
+                lv_obj_set_style_text_color(lbl_clear, lv_color_hex(ui_theme()->text), 0);
                 lv_obj_center(lbl_clear);
             }
         }
@@ -1694,7 +1694,7 @@ lv_obj_t* ui_settings_create(void)
             lv_textarea_set_one_line(s_ta, true);
             lv_textarea_set_max_length(s_ta, 32);
             lv_obj_set_style_text_font(s_ta, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_ta, lv_color_white(), 0);
+            lv_obj_set_style_text_color(s_ta, lv_color_hex(ui_theme()->text), 0);
             lv_obj_set_style_bg_color(s_ta, lv_color_hex(ui_theme()->btn), 0);
             lv_obj_set_style_bg_opa(s_ta, LV_OPA_COVER, 0);
             lv_obj_set_style_border_width(s_ta, 0, 0);
@@ -1812,7 +1812,7 @@ lv_obj_t* ui_settings_create(void)
             if (lbl_manual) {
                 lv_label_set_text(lbl_manual, "Type manually");
                 lv_obj_set_style_text_font(lbl_manual, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(lbl_manual, lv_color_white(), 0);
+                lv_obj_set_style_text_color(lbl_manual, lv_color_hex(ui_theme()->text), 0);
                 lv_obj_center(lbl_manual);
             }
         }
@@ -1828,7 +1828,7 @@ lv_obj_t* ui_settings_create(void)
             if (lbl_cancel2) {
                 lv_label_set_text(lbl_cancel2, "Cancel");
                 lv_obj_set_style_text_font(lbl_cancel2, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(lbl_cancel2, lv_color_white(), 0);
+                lv_obj_set_style_text_color(lbl_cancel2, lv_color_hex(ui_theme()->text), 0);
                 lv_obj_center(lbl_cancel2);
             }
         }
@@ -1898,7 +1898,7 @@ lv_obj_t* ui_settings_create(void)
             if (lbl_flash) {
                 lv_label_set_text(lbl_flash, "Flash");
                 lv_obj_set_style_text_font(lbl_flash, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(lbl_flash, lv_color_white(), 0);
+                lv_obj_set_style_text_color(lbl_flash, lv_color_hex(ui_theme()->text), 0);
                 lv_obj_center(lbl_flash);
             }
         }
@@ -1914,7 +1914,7 @@ lv_obj_t* ui_settings_create(void)
             if (lbl_ocancel) {
                 lv_label_set_text(lbl_ocancel, "Cancel");
                 lv_obj_set_style_text_font(lbl_ocancel, &lv_font_montserrat_14, 0);
-                lv_obj_set_style_text_color(lbl_ocancel, lv_color_white(), 0);
+                lv_obj_set_style_text_color(lbl_ocancel, lv_color_hex(ui_theme()->text), 0);
                 lv_obj_center(lbl_ocancel);
             }
         }

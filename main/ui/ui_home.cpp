@@ -170,7 +170,7 @@ static lv_obj_t* make_block(lv_obj_t* parent, const char* label_text,
     lv_obj_t* lbl = lv_label_create(btn);
     lv_label_set_text(lbl, label_text);
     lv_obj_set_style_text_font(lbl, &lv_font_montserrat_16, 0);
-    lv_obj_set_style_text_color(lbl, lv_color_white(), 0);
+    lv_obj_set_style_text_color(lbl, lv_color_hex(ui_theme()->text), 0);
     lv_obj_center(lbl);
 
     return btn;
@@ -188,7 +188,7 @@ lv_obj_t* ui_home_create(void)
     lv_obj_t* title = lv_label_create(s_home);
     lv_label_set_text(title, "SiteSurvey Pro");
     lv_obj_set_style_text_font(title, &lv_font_montserrat_22, 0);
-    lv_obj_set_style_text_color(title, lv_color_white(), 0);
+    lv_obj_set_style_text_color(title, lv_color_hex(ui_theme()->text), 0);
     lv_obj_set_style_text_outline_stroke_color(title, THM_ACCENT, 0);
     lv_obj_set_style_text_outline_stroke_width(title, 2, 0);
     lv_obj_set_style_text_outline_stroke_opa(title, LV_OPA_60, 0);

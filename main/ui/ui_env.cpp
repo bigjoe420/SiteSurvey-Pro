@@ -245,7 +245,7 @@ static void build_gauge(lv_obj_t* scr, Gauge* g, int x, int y)
     g->marker = lv_obj_create(scr);
     lv_obj_remove_flag(g->marker, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(g->marker, 4, TRACK_H + 8);
-    lv_obj_set_style_bg_color(g->marker, lv_color_white(), 0);
+    lv_obj_set_style_bg_color(g->marker, lv_color_hex(ui_theme()->text), 0);
     lv_obj_set_style_bg_opa(g->marker, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(g->marker, 0, 0);
     lv_obj_set_style_radius(g->marker, 2, 0);

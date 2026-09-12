@@ -103,7 +103,7 @@ lv_obj_t* ui_wifi_detail_create(const WifiApInfo_t* info, lv_event_cb_t back_cb)
     s_title = lv_label_create(s_scr);
     lv_label_set_text(s_title, info->ssid);
     lv_obj_set_style_text_font(s_title, &lv_font_montserrat_14, 0);
-    lv_obj_set_style_text_color(s_title, lv_color_white(), 0);
+    lv_obj_set_style_text_color(s_title, lv_color_hex(ui_theme()->text), 0);
     lv_obj_align(s_title, LV_ALIGN_TOP_MID, 0, 12);
 
     // RSSI history chart
