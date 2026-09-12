@@ -1,4 +1,5 @@
 #include "ui_calib.h"
+#include "ui_theme.h"
 
 #include "touch.h"
 #include "esp_log.h"
@@ -29,13 +30,13 @@ static void add_target(int16_t cx, int16_t cy, const char* name)
     lv_obj_set_pos(dot, cx - 9, cy - 9);
     lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_bg_color(dot, lv_palette_main(LV_PALETTE_RED), 0);
-    lv_obj_set_style_border_color(dot, lv_color_white(), 0);
+    lv_obj_set_style_border_color(dot, lv_color_hex(ui_theme()->text), 0);
     lv_obj_set_style_border_width(dot, 2, 0);
     lv_obj_remove_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
 
     lv_obj_t* tag = lv_label_create(scr);
     lv_label_set_text(tag, name);
-    lv_obj_set_style_text_color(tag, lv_color_white(), 0);
+    lv_obj_set_style_text_color(tag, lv_color_hex(ui_theme()->text), 0);
     // Right-edge targets get the label on their left so nothing exceeds 320 px
     lv_obj_set_pos(tag, cx > 200 ? cx - 40 : cx + 14, cy - 8);
 }
