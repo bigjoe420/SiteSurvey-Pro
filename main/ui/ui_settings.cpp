@@ -44,8 +44,6 @@ static lv_obj_t* s_lbl_timeout;
 static lv_obj_t* s_lbl_dim;
 static lv_obj_t* s_lbl_auto_off;
 static lv_obj_t* s_switch_sleep;
-static lv_obj_t* s_switch_outdoor;
-static lv_obj_t* s_lbl_outdoor;
 
 // Scan filter widgets
 static lv_obj_t* s_switch_band2;
@@ -193,13 +191,6 @@ static void refresh_power_labels(void)
             lv_obj_clear_state(s_switch_sleep, LV_STATE_CHECKED);
         }
     }
-    if (s_switch_outdoor) {
-        if (power_mgr_get_outdoor()) {
-            lv_obj_add_state(s_switch_outdoor, LV_STATE_CHECKED);
-        } else {
-            lv_obj_clear_state(s_switch_outdoor, LV_STATE_CHECKED);
-        }
-    }
 }
 
 static void timeout_minus_cb(lv_event_t*)
@@ -246,29 +237,6 @@ static void sleep_toggle_cb(lv_event_t* e)
 {
     lv_obj_t* sw = (lv_obj_t*)lv_event_get_target(e);
     power_mgr_set_sleep_en(lv_obj_has_state(sw, LV_STATE_CHECKED));
-}
-
-// Outdoor mode swaps the UI palette at boot, so the toggle saves the setting
-// and restarts. The restart is deferred through a one-shot LVGL timer so the
-// switch renders its new state first (same pattern as power_off_cb).
-static void outdoor_restart_timer_cb(lv_timer_t* t)
-{
-    lv_timer_del(t);
-    ESP_LOGI("settings", "outdoor mode toggle - restarting to apply theme");
-    esp_restart();  // never returns
-}
-
-static void outdoor_toggle_cb(lv_event_t* e)
-{
-    lv_obj_t* sw = (lv_obj_t*)lv_event_get_target(e);
-    bool en = lv_obj_has_state(sw, LV_STATE_CHECKED);
-    power_mgr_set_outdoor(en);   // NVS via flash broker; survives the restart
-    if (s_lbl_outdoor) {
-        lv_label_set_text(s_lbl_outdoor, en ? "Outdoor mode - restarting..."
-                                            : "Outdoor mode restarting...");
-    }
-    lv_obj_clear_flag(sw, LV_OBJ_FLAG_CLICKABLE);  // ignore repeat taps
-    lv_timer_create(outdoor_restart_timer_cb, 900, nullptr);
 }
 
 static void auto_off_minus_cb(lv_event_t*)
@@ -1476,25 +1444,6 @@ lv_obj_t* ui_settings_create(void)
                 lv_label_set_text(lbl_ao_plus, "+");
                 lv_obj_center(lbl_ao_plus);
             }
-        }
-        y += ROW_H + GAP;
-
-        // Outdoor mode — high-contrast palette + raised backlight dim floor.
-        // Toggling saves to NVS and restarts the unit (palette is baked at
-        // screen creation; a reboot is the clean way to re-theme everything).
-        s_lbl_outdoor = lv_label_create(s_panel);
-        if (s_lbl_outdoor) {
-            lv_label_set_text(s_lbl_outdoor, "Outdoor mode");
-            lv_obj_set_style_text_font(s_lbl_outdoor, &lv_font_montserrat_14, 0);
-            lv_obj_set_style_text_color(s_lbl_outdoor, lv_color_hex(ui_theme()->label), 0);
-            lv_obj_set_pos(s_lbl_outdoor, 8, y + 6);
-        }
-
-        s_switch_outdoor = lv_switch_create(s_panel);
-        if (s_switch_outdoor) {
-            lv_obj_set_size(s_switch_outdoor, 44, 22);
-            lv_obj_set_pos(s_switch_outdoor, 260, y + 4);
-            lv_obj_add_event_cb(s_switch_outdoor, outdoor_toggle_cb, LV_EVENT_VALUE_CHANGED, nullptr);
         }
         y += ROW_H + GAP;
 
