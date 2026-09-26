@@ -3,7 +3,7 @@
 ================================================================================
 
 > **Single source of truth for project direction.** Update this file when milestones land.
-> **Last updated:** 2026-09-11
+> **Last updated:** 2026-09-13
 > **Workspace:** `D:\SiteSurvey Pro` | **GitHub (manual backup only):** `bigjoe420/SiteSurvey-Pro`
 > **Platform:** NM-CYD-C5 (ESP32-C5 RISC-V, ESP-IDF v6.0.1)
 > **Manufacturer Repo:** https://github.com/RockBase-iot/NM-CYD-C5
@@ -189,6 +189,8 @@ Hardware verification and board support package (BSP) establishment completed.
 | GPS module | Verified 2026-09-12 | Replacement module: NMEA clean; owner walk test DONE — session 000132: 44 min, 715 rows, 90% with q=2 (DGPS, best NMEA GGA offers — q=3 does not exist) fixes up to 11 sats, trajectory matches the walked loop; KML placemarks validated |
 | GPIO 8/9 I2C conflict | Known | Also used for CC1101/NRF24 in Bruce firmware. Reserved for I2C only. |
 | Deepsleep wake GPIO | Known | GPIO 0 is wake source. Must be HIGH at boot. |
+| SD card FAT health | Repaired 2026-09-13 | Cross-linked dir entry (`survey_19700101_000025_13.csv`, unit 133) made device `readdir` return zero entries while single-file access still worked — the blank picker root cause. Fixed by PC `chkdsk /F` after full backup to `sessions-backup-20260912/`. Write-gremlin watch item continues: `current_session` pointer file reads 0 bytes; one 0-byte session stub seen since. |
+| Settings scroll regression | **ACTIVE — root cause unknown** | SCR_SETTINGS only: drag scrolls briefly then returns to top; many swipes to reach bottom. Wi-Fi/BLE lists fine; reproduces WITHOUT SD card (contention theory dead). 50 Hz touch+scroll ring diag flashed (`tdbg_*` in touch.cpp, uncommitted) writes `/sdcard/touch_diag.csv` every 30 s — analyze `scroll_y` resets vs touch samples. Remove diag before commit. |
 
 ---
 

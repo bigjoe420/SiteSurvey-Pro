@@ -8,7 +8,7 @@ import os
 import subprocess
 import sys
 
-PROJECT = r'D:\SiteSurvey Pro'
+PROJECT = r'C:\Development\SiteSurvey Pro'
 VENV_SCRIPTS = r'C:\Users\joeky\.espressif\python_env\idf6.1_py3.13_env\Scripts'
 
 env = dict(os.environ)

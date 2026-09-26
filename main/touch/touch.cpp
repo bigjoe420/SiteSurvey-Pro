@@ -1,5 +1,6 @@
 #include "touch.h"
 
+#include <cstring>
 #include "board_pins.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
@@ -29,15 +30,31 @@ static portMUX_TYPE s_sample_mux = portMUX_INITIALIZER_UNLOCKED;
 // One control byte out, two result bytes back; CS stays low for the whole frame
 static uint16_t read_channel(uint8_t cmd)
 {
+    // DMA-capable STATIC buffers, never the transaction's inline arrays.
+    // The sampler task's stack lives in PSRAM (xTaskCreateWithCaps), so with
+    // SPI_TRANS_USE_TXDATA/RXDATA the tx/rx inline arrays were NOT DMA-
+    // capable and the driver alloc/freed a "priv" internal buffer for EVERY
+    // transaction — 7 per sample, ~350/s, against the ~4 KB internal DMA
+    // heap. When those allocs failed, the read returned 0 (spurious
+    // release / (0,239) corner spikes) and twice the driver crashed in
+    // uninstall_priv_desc (Load access fault). Static internal buffers keep
+    // every transaction on the driver's no-alloc path.
+    static uint8_t s_tx[4] __attribute__((aligned(4)));
+    static uint8_t s_rx[4] __attribute__((aligned(4)));
     spi_transaction_t t = {};
-    t.flags = SPI_TRANS_USE_TXDATA | SPI_TRANS_USE_RXDATA;
-    t.length = 3 * 8;
-    t.tx_data[0] = cmd;
-    if (spi_device_transmit(s_dev, &t) != ESP_OK) {
+    // 32 bits (4 bytes), not 24: the driver's no-alloc path requires the byte
+    // length to satisfy the cache/DMA alignment too ((buf|len) & (align-1)).
+    // One extra clocked-out byte is ignored by the XPT2046.
+    t.length = 4 * 8;
+    s_tx[0] = cmd;
+    t.tx_buffer = s_tx;
+    t.rx_buffer = s_rx;
+    esp_err_t err = spi_device_transmit(s_dev, &t);
+    if (err != ESP_OK) {
         return 0;
     }
     // 12-bit result is left-justified in the two response bytes
-    return ((t.rx_data[1] << 8) | t.rx_data[2]) >> 3;
+    return ((s_rx[1] << 8) | s_rx[2]) >> 3;
 }
 
 static uint16_t read_averaged(uint8_t cmd)
@@ -79,7 +96,8 @@ esp_err_t touch_init(void)
 
 bool touch_read_raw(uint16_t* raw_x, uint16_t* raw_y)
 {
-    if (read_channel(CMD_Z1) < PRESS_THRESHOLD) {
+    uint16_t z1 = read_channel(CMD_Z1);
+    if (z1 < PRESS_THRESHOLD) {
         return false;
     }
     *raw_x = read_averaged(CMD_X);
@@ -87,23 +105,25 @@ bool touch_read_raw(uint16_t* raw_x, uint16_t* raw_y)
     return true;
 }
 
-bool touch_read(int16_t* x, int16_t* y)
+// Inner read: one ADC acquisition, mapping + spike rejection. Exposed raw
+// values pair with the mapped ones (single acquisition).
+static bool touch_read_inner(int16_t* x, int16_t* y, uint16_t* raw_x, uint16_t* raw_y)
 {
     static int16_t s_last_x = 0, s_last_y = 0;
     static bool    s_had_contact = false;
     static uint8_t s_reject_n = 0;
 
-    uint16_t raw_x, raw_y;
-    if (!touch_read_raw(&raw_x, &raw_y)) {
+    uint16_t rx, ry;
+    if (!touch_read_raw(&rx, &ry)) {
         s_had_contact = false;
         return false;
     }
 
     // Measured mapping (board_pins.h): raw Y -> screen X, raw X -> screen Y,
     // both channels decrease as the screen coordinate increases
-    int16_t mx = map_anchored(raw_y, SSP_TOUCH_RAWY_LEFT, SSP_TOUCH_RAWY_RIGHT,
+    int16_t mx = map_anchored(ry, SSP_TOUCH_RAWY_LEFT, SSP_TOUCH_RAWY_RIGHT,
                               SSP_TOUCH_ANCHOR_MIN, SSP_TOUCH_ANCHOR_MAX_X, SSP_TFT_WIDTH - 1);
-    int16_t my = map_anchored(raw_x, SSP_TOUCH_RAWX_TOP, SSP_TOUCH_RAWX_BOTTOM,
+    int16_t my = map_anchored(rx, SSP_TOUCH_RAWX_TOP, SSP_TOUCH_RAWX_BOTTOM,
                               SSP_TOUCH_ANCHOR_MIN, SSP_TOUCH_ANCHOR_MAX_Y, SSP_TFT_HEIGHT - 1);
 
     // Spike rejection. The XPT2046 contact bounces on press (first samples
@@ -120,6 +140,8 @@ bool touch_read(int16_t* x, int16_t* y)
             if (++s_reject_n < 3) {
                 *x = s_last_x;
                 *y = s_last_y;
+                if (raw_x) *raw_x = rx;
+                if (raw_y) *raw_y = ry;
                 return true;   // hold last good position, stay pressed
             }
             s_reject_n = 0;    // persistent: baseline was junk, accept new pos
@@ -132,7 +154,14 @@ bool touch_read(int16_t* x, int16_t* y)
     s_last_y = my;
     *x = mx;
     *y = my;
+    if (raw_x) *raw_x = rx;
+    if (raw_y) *raw_y = ry;
     return true;
+}
+
+bool touch_read(int16_t* x, int16_t* y)
+{
+    return touch_read_inner(x, y, nullptr, nullptr);
 }
 
 // ---- Background sampler task (prio 24, tied with ui_task at the top) ----
@@ -198,3 +227,4 @@ bool touch_read_latest(int16_t* x, int16_t* y)
     }
     return pressed;
 }
+

@@ -25,6 +25,10 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/partitions.csv"
 # PSRAM (8MB on NM-CYD-C5; ESP32-C5 supports QUAD mode only)
 # -----------------------------------------------------------------------------
 CONFIG_SPIRAM=y
+# PSRAM speed: LVGL draw buffers + pool live in PSRAM. Frame-probe A/B
+# 2026-09-26: with RVV exonerated, 80 MHz alone is the clean test of MSPI bus
+# bandwidth (render reads/writes PSRAM while DMA drains a frame from it).
+CONFIG_SPIRAM_SPEED_80M=y
 CONFIG_SPIRAM_USE_CAPS_ALLOC=y
 CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
 CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM=y
@@ -118,6 +122,17 @@ CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
 # when multiple screens are cached (Settings keyboard is heavy).
 CONFIG_LV_MEM_SIZE_KILOBYTES=64
 CONFIG_LV_MEM_POOL_EXPAND_SIZE_KILOBYTES=256
+
+# Scroll smoothness (2026-09-26 audit):
+#  - Refresh period 33 ms (30 fps) -> 16 ms (60 fps). Frame pacing is gated by
+#    render time anyway; the 33 ms floor just added dead time between frames.
+#  - RVV assembly blends: C5 has the vector extension; LVGL 9.5 ships RVV asm
+#    for the sw draw unit. Off by default, costs nothing at runtime.
+CONFIG_LV_DEF_REFR_PERIOD=16
+# RVV asm A/B test (2026-09-26): reverted to NONE — frame probe showed
+# ~17 ms avg CPU render per frame with RVV on, suspect slow vector blends on
+# C5. Re-enable only if measurements clear it.
+CONFIG_LV_DRAW_SW_ASM_NONE=y
 
 # Disable LVGL NULL-pointer asserts. When OOM strikes, lv_obj_create returns NULL
 # instead of hanging in while(1). Existing NULL guards in the UI code handle it.

@@ -29,7 +29,11 @@
 
 #define SSP_TFT_WIDTH   320
 #define SSP_TFT_HEIGHT  240
-#define SSP_TFT_SPI_FREQ_HZ     20000000UL  // 20 MHz max
+#define SSP_TFT_SPI_FREQ_HZ     30000000UL  // 30 MHz — 40 MHz re-tested twice
+// (2026-09-26, with queue 2 + full-frame buffers + both PSRAM speeds) and both
+// times showed corruption artifacts (thin green bar across the screen). The
+// shared-SPI wiring can't hold 40 MHz. 20 MHz starves LVGL indev reads; 30 MHz
+// is the ceiling: full-frame DMA ~41 ms caps scroll at ~24 fps.
 
 // =============================================================================
 // XPT2046 Resistive Touch Controller
