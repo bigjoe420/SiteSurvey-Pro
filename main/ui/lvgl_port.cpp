@@ -13,12 +13,20 @@
 
 static const char* TAG = "lvgl_port";
 
-// 1/10th of the screen per buffer, double buffered, in PSRAM
-static constexpr size_t BUF_ROWS = 48;
+// Full-frame double buffer in PSRAM. With partial (48-row) buffers LVGL
+// blocks inside lv_timer_handler() waiting for a draw buffer to come back
+// from DMA on every other chunk — the handler's indev processing then runs
+// once per frame (~41 ms of DMA at 30 MHz), so an 80 ms flick yields 1-2
+// pointer reads and the panel elastic-snaps back to top. Full-frame buffers
+// let LVGL render frame N+1 while frame N's DMA drains: steady state has no
+// buffer wait, and indev reads keep their 20 ms cadence during scroll.
+// 2 x 150 KB of the 8 MB PSRAM — cheap for what it buys.
+static constexpr size_t BUF_ROWS = SSP_TFT_HEIGHT;
 static constexpr size_t BUF_SIZE = SSP_TFT_WIDTH * BUF_ROWS * sizeof(uint16_t);
 
 static esp_lcd_panel_handle_t s_panel;
 static lv_display_t* s_disp;
+
 
 // Backlight is held off until LVGL's first full frame is physically on the
 // glass, so the panel never lights up on unfinished pixels.

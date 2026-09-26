@@ -91,9 +91,17 @@ static void sync_dir_entry(void)
     // FATFS only updates the directory entry (size, cluster chain) on
     // f_sync/f_close. fflush() alone leaves a stale dir entry, so after a
     // power cut the file appears 0 bytes even though data clusters were
-    // written. fsync forces the dir entry out after every flush.
+    // written. fsync forces the dir entry out.
+    //
+    // Throttled, not every flush: the fsync's extra SD metadata traffic runs
+    // on the SPI bus shared with the display and touch, and mid-gesture it
+    // froze scrolling ("froze, then finally moved"). Data still leaves every
+    // FLUSH_MS via fflush; a power cut inside the window costs the whole
+    // session file (known FAT-stub risk) — bounded at one window in 4.
     if (s_f) fsync(fileno(s_f));
 }
+
+#define SYNC_EVERY_N_FLUSHES 16
 
 static void write_buffer(void)
 {
@@ -112,7 +120,11 @@ static void write_buffer(void)
                 e->sats, e->fix_q);
     }
     fflush(s_f);
-    sync_dir_entry();
+    static uint8_t s_flush_n;
+    if (++s_flush_n >= SYNC_EVERY_N_FLUSHES) {
+        s_flush_n = 0;
+        sync_dir_entry();
+    }
     s_buf_n = 0;
     s_last_flush = xTaskGetTickCount();
     ESP_LOGI(TAG, "flushed %d entries to %s", n, s_path);
