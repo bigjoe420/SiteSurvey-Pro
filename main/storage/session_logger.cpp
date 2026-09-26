@@ -14,7 +14,7 @@
 static const char* TAG = "session";
 #define SD_PREFIX  "/sdcard"
 #define BUF_ENTRIES 16
-#define FLUSH_MS    5000
+#define FLUSH_MS    10000
 
 struct LogEntry {
     char ts[20];          // YYYY-MM-DD HH:MM:SS
@@ -101,7 +101,7 @@ static void sync_dir_entry(void)
     if (s_f) fsync(fileno(s_f));
 }
 
-#define SYNC_EVERY_N_FLUSHES 16
+#define SYNC_EVERY_N_FLUSHES 32
 
 static void write_buffer(void)
 {
