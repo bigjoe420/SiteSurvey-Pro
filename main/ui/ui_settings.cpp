@@ -15,6 +15,7 @@
 #include "esp_heap_caps.h"
 #include "esp_app_desc.h"
 #include "esp_system.h"
+#include "touch.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/idf_additions.h"
@@ -325,9 +326,24 @@ static void sess_refresh_label(void)
 
 // Re-scan the SD card and default the selection to the active session
 // (matches the pre-picker export behavior until the owner picks otherwise).
+static uint32_t s_sess_scan_at;                 // esp_log_timestamp of last scan
+#define SESS_SCAN_TTL_MS 10000
+
 static void sess_rescan(void)
 {
+    // The scan walks the SD FAT directory over the SPI bus shared with the
+    // display DMA; on ui_task it stalls rendering for the whole walk (worse
+    // under bus contention). Cache results for 10 s so re-entering Settings
+    // doesn't re-hit the card every visit.
+    if (s_sess_scan_at && esp_log_timestamp() - s_sess_scan_at < SESS_SCAN_TTL_MS) {
+        sess_refresh_label();
+        return;
+    }
+    uint32_t t0 = esp_log_timestamp();
     s_sess_count = csv_list_sessions(s_sess_files, SESS_MAX);
+    ESP_LOGI("settings", "sess_rescan: %d sessions in %lu ms",
+             s_sess_count, (unsigned long)(esp_log_timestamp() - t0));
+    s_sess_scan_at = esp_log_timestamp();
     s_sess_sel[0] = 0;
     for (int i = 0; i < s_sess_count; i++) {
         if (s_sess_files[i].is_active) {
@@ -357,9 +373,12 @@ static void sess_cancel_cb(lv_event_t*)
 static void sess_open_cb(lv_event_t*)
 {
     if (!s_sess_modal || !s_sess_list) return;
+    uint32_t t0 = esp_log_timestamp();
     lv_obj_clean(s_sess_list);
     lv_obj_scroll_to_y(s_sess_list, 0, LV_ANIM_OFF);
     s_sess_count = csv_list_sessions(s_sess_files, SESS_MAX);
+    ESP_LOGI("settings", "picker scan: %d sessions in %lu ms",
+             s_sess_count, (unsigned long)(esp_log_timestamp() - t0));
     bool sd_error = s_sess_count < 0;
     ESP_LOGI("settings", "session picker: scan -> %d sessions", s_sess_count);
     if (sd_error) s_sess_count = 0;   // keep the row loop safe
@@ -412,10 +431,18 @@ static void sess_open_cb(lv_event_t*)
     if (s_sess_empty) {
         if (s_sess_count == 0) {
             // Distinguish "card not available" from "card has no sessions" —
-            // the scan already logged the reason over serial.
-            lv_label_set_text(s_sess_empty,
-                sd_error ? "SD card not available\nReboot after inserting card"
-                         : "No session files on SD card");
+            // the scan already logged the reason over serial. The raw count
+            // rides along so a blank list is diagnosable from the screen.
+            if (sd_error) {
+                lv_label_set_text_fmt(s_sess_empty,
+                    "SD card not available\nReboot after inserting card\n(scan %d)",
+                    s_sess_count);
+            } else {
+                const CsvScanStats* st = csv_last_scan_stats();
+                lv_label_set_text_fmt(s_sess_empty,
+                    "No session files on SD card\ndir %d named %d err %d empty %d",
+                    st->dir_entries, st->survey_named, st->stat_fail, st->empty);
+            }
             lv_obj_clear_flag(s_sess_empty, LV_OBJ_FLAG_HIDDEN);
         } else {
             lv_obj_add_flag(s_sess_empty, LV_OBJ_FLAG_HIDDEN);
@@ -1146,6 +1173,28 @@ static lv_obj_t* make_target_row(lv_obj_t* parent, int y, lv_event_cb_t edit_cb,
 // Screen creation
 // ---------------------------------------------------------------------------
 
+// Recursively remove SCROLLABLE from every descendant of the settings panel.
+// LVGL 9.5 gives every child SCROLLABLE|SCROLL_ELASTIC|SCROLL_MOMENTUM|
+// SCROLL_CHAIN by default, and lv_indev_find_scroll_obj() picks the DEEPEST
+// object with scroll room: any button/row whose content overflows its bounds
+// by even 1 px (default-theme button pad_ver makes 20-30 px buttons overflow)
+// swallows the drag, elastically snaps back, and the panel never sees it.
+// The Wi-Fi/BLE lists fixed this exact bug by removing SCROLLABLE from their
+// rows (871c9a9); settings never did. Modal lists (s_sess_modal etc.) are NOT
+// children of s_panel and keep their own scrolling.
+static void strip_scroll_recursive(lv_obj_t* obj)
+{
+    if (!obj) return;
+    uint32_t n = lv_obj_get_child_count(obj);
+    for (uint32_t i = 0; i < n; i++) {
+        lv_obj_t* child = lv_obj_get_child(obj, (int32_t)i);
+        if (child) {
+            lv_obj_remove_flag(child, LV_OBJ_FLAG_SCROLLABLE);
+            strip_scroll_recursive(child);
+        }
+    }
+}
+
 lv_obj_t* ui_settings_create(void)
 {
     s_scr = lv_obj_create(nullptr);
@@ -1778,12 +1827,14 @@ lv_obj_t* ui_settings_create(void)
     // -----------------------------------------------------------------------
     lv_obj_t* back = lv_btn_create(s_scr);
     if (back) {
-        lv_obj_set_size(back, 80, 32);
-        lv_obj_set_pos(back, 4, 4);
+        lv_obj_set_size(back, 92, 38);
+        lv_obj_set_pos(back, 6, 6);
         lv_obj_set_style_bg_color(back, lv_color_hex(ui_theme()->btn), 0);
         lv_obj_set_style_radius(back, 3, 0);
         lv_obj_add_event_cb(back, back_cb, LV_EVENT_CLICKED, nullptr);
-        lv_obj_set_ext_click_area(back, 4);
+        // Resistive touch reads poorly in the extreme corner; generous slack
+        // so a tap landing slightly outside the rect still registers.
+        lv_obj_set_ext_click_area(back, 12);
 
         lv_obj_t* back_lbl = lv_label_create(back);
         if (back_lbl) {
@@ -2120,6 +2171,11 @@ lv_obj_t* ui_settings_create(void)
         }
     }
 
+    // Gesture routing fix: the panel is the ONLY scrollable object in the
+    // settings content tree (see strip_scroll_recursive above). All rows are
+    // created above, so one call here covers every descendant.
+    strip_scroll_recursive(s_panel);
+
     // Load current config
     const AlertConfig_t* cfg = alert_config_get();
     s_cfg = *cfg;
@@ -2143,7 +2199,8 @@ lv_obj_t* ui_settings_create(void)
 }
 
 void ui_settings_set_visible(bool visible)
-{    s_visible = visible;
+{
+    s_visible = visible;
     if (visible) {
         // Reload config in case it changed externally
         const AlertConfig_t* cfg = alert_config_get();
@@ -2160,7 +2217,9 @@ void ui_settings_set_visible(bool visible)
         refresh_bssid_list();
         refresh_power_labels();
         refresh_filter_labels();
-        sess_rescan();   // SD contents may have changed since last visit
+        // Defer the SD directory scan until after the first paint — it blocks
+        // ui_task for the whole FAT walk on the display-shared SPI bus.
+        lv_async_call([](void*) { sess_rescan(); }, nullptr);
 
         // Reset scroll state for smooth entry
         if (s_panel) {

@@ -67,9 +67,12 @@ bool csv_find_latest(char* out_path, size_t n)
     return true;
 }
 
+static CsvScanStats s_stats;
+
 int csv_list_sessions(CsvSession* out, int max)
 {
     if (!out || max <= 0) return -1;
+    s_stats = {};
 
     // Active session basename (if the pointer file exists) for marking.
     char active[40] = {0};
@@ -95,13 +98,16 @@ int csv_list_sessions(CsvSession* out, int max)
     while ((de = readdir(d)) != nullptr && n < max) {
         const char* nm = de->d_name;
         size_t L = strlen(nm);
+        s_stats.dir_entries++;
         if (L < 12 || L >= sizeof(out[0].name)) continue;
         if (strncmp(nm, "survey_", 7) != 0) continue;
         if (strcmp(nm + L - 4, ".csv") != 0) continue;
+        s_stats.survey_named++;
         char p[320];
         snprintf(p, sizeof(p), "%s/%s", SD_DIR, nm);
         struct stat st;
-        if (stat(p, &st) != 0 || st.st_size == 0) continue;
+        if (stat(p, &st) != 0) { s_stats.stat_fail++; continue; }
+        if (st.st_size == 0) { s_stats.empty++; continue; }
         snprintf(out[n].name, sizeof(out[n].name), "%.*s",
                  (int)sizeof(out[n].name) - 1, nm);
         out[n].size  = (uint32_t)st.st_size;
@@ -110,6 +116,12 @@ int csv_list_sessions(CsvSession* out, int max)
         n++;
     }
     closedir(d);
+    s_stats.kept = n;
+    // One-shot diagnosis aid: shows whether the root dir is truly empty of
+    // sessions, or whether entries are being dropped by filter/stat.
+    ESP_LOGI(TAG, "scan: dir_entries=%d survey_csv_named=%d stat_fail=%d "
+                  "empty=%d kept=%d", s_stats.dir_entries, s_stats.survey_named,
+             s_stats.stat_fail, s_stats.empty, s_stats.kept);
 
     // Newest first: mtime desc, file name desc as tiebreak.
     for (int i = 1; i < n; i++) {
@@ -124,6 +136,11 @@ int csv_list_sessions(CsvSession* out, int max)
         out[j + 1] = key;
     }
     return n;
+}
+
+const CsvScanStats* csv_last_scan_stats(void)
+{
+    return &s_stats;
 }
 
 bool csv_parse_row(char* line, ApRec* r)

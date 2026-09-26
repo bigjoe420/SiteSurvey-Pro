@@ -58,6 +58,16 @@ typedef struct {
 // SD card directory cannot be opened at all (absent / not mounted).
 int csv_list_sessions(CsvSession* out, int max);
 
+// Breakdown of the most recent csv_list_sessions run (diagnostics).
+typedef struct {
+    int dir_entries;     // total dirents iterated
+    int survey_named;    // passed the survey_*.csv name filter
+    int stat_fail;       // stat() errored
+    int empty;           // zero-byte files
+    int kept;            // returned as sessions
+} CsvScanStats;
+const CsvScanStats* csv_last_scan_stats(void);
+
 // Growable table of unique APs keyed by MAC, allocated from PSRAM.
 typedef struct {
     ApRec* recs;

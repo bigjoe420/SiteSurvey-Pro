@@ -5,6 +5,7 @@
 #include "board_pins.h"
 #include "driver/sdspi_host.h"
 #include "esp_log.h"
+#include "esp_heap_caps.h"
 #include "esp_vfs_fat.h"
 #include "sdmmc_cmd.h"
 
@@ -12,6 +13,17 @@ static const char* TAG = "sdcard";
 #define SD_MOUNT "/sdcard"
 
 static bool s_present;
+
+// 2026-09-26 audit: the IDF v6.1 sdmmc protocol layer routes unaligned sector
+// reads/writes (all FATFS traffic) through a per-transaction MALLOC_CAP_DMA
+// temp buffer allocated from the heap. By session-open time, BLE + Wi-Fi have
+// drained internal DMA RAM to ~100 B, so every fopen fails with
+// "allocate_dma_buf: not enough mem, err=0x101". Pin one small DMA buffer at
+// init — internal RAM is still plentiful here (≈68 KB free) — and cap the
+// chunk at 4 sectors (2 KB). CSV lines are tiny; throughput is irrelevant.
+// NOTE: must be a heap_caps_malloc'd pointer (not static .bss) — the driver
+// calls heap_caps_get_allocated_size() on it and asserts on non-heap pointers.
+static void* s_sd_dma_buf;
 
 esp_err_t sd_card_init(void)
 {
@@ -22,6 +34,13 @@ esp_err_t sd_card_init(void)
     // data tokens, reads always OK) — drop to 10 MHz for margin. CSV lines are
     // tiny; throughput is irrelevant here.
     host.max_freq_khz = 10000;
+    s_sd_dma_buf = heap_caps_aligned_alloc(8, 4 * 512, MALLOC_CAP_DMA);
+    if (!s_sd_dma_buf) {
+        ESP_LOGE(TAG, "SD DMA buffer alloc failed — logging will degrade");
+    } else {
+        host.unaligned_multi_block_rw_max_chunk_size = 4;
+        host.dma_aligned_buffer = s_sd_dma_buf;
+    }
 
     sdspi_device_config_t slot = SDSPI_DEVICE_CONFIG_DEFAULT();
     slot.host_id = SPI2_HOST;

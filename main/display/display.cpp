@@ -38,7 +38,13 @@ esp_err_t display_init(esp_lcd_panel_handle_t* out_panel)
     io_cfg.dc_gpio_num = SSP_TFT_DC;
     io_cfg.spi_mode = 0;
     io_cfg.pclk_hz = SSP_TFT_SPI_FREQ_HZ;
-    io_cfg.trans_queue_depth = 10;
+    // Shallow queue on purpose. Depth 10 let a full frame of DMA chunks sit
+    // back-to-back on the shared bus, starving the XPT2046 touch sampler
+    // (blocking spi_device_transmit waits behind ~41 ms of queued display
+    // traffic at 30 MHz → LVGL saw 1-2 points per flick → bounce-to-top).
+    // Depth 2 caps the sampler's worst-case bus wait at ~2 chunks (~8 ms),
+    // well inside its 20 ms period, while display DMA stays pipelined.
+    io_cfg.trans_queue_depth = 2;
     io_cfg.lcd_cmd_bits = 8;
     io_cfg.lcd_param_bits = 8;
     // LVGL draw buffers live in PSRAM. On IDF v6.x the SPI master otherwise
