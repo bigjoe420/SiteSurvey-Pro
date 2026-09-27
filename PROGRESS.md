@@ -1095,3 +1095,21 @@ LVGL samples the finger once per screen redraw. Redraws during scrolling took ~6
 **Owner-reported reset on first Settings tap (2026-09-26):** NOT reproduced on the bench (0 resets across ~10 min of captures). Prime suspect was the entry-time synchronous SD scan + first-paint storm; mitigations (TTL + async scan) shipped. Keep an eye; if it recurs, capture the backtrace immediately.
 
 **Bench:** 1 boot / 40 s, SD self-test OK, `session started`, no asserts. Bin ~1.86 MB.
+
+---
+
+## 2026-09-26 (late) — Session: splash-freeze root cause + recovery + internal-DMA-RAM wall
+
+**Splash freeze ROOT CAUSE (device was alive, UI dead):** boot ladder showed internal DMA-capable RAM at **0–8 bytes free** after init. The SPI master allocates a small internal DMA temp buffer PER TRANSACTION for every display command/params (`spicommon_dma_setup_priv_buffer`); with zero headroom every `tx_param`/`draw_bitmap` failed (`Failed to allocate priv TX buffer`) → `flush_cb` error path → splash frozen. The trigger was enabling **core-dump-to-flash** (~2–4 KB permanent internal-RAM cost). Compensating by trimming NimBLE transport buffers (ACL_FROM_LL 24→4, EVT 30→16, mSys 24→12) freed ~8 KB but **broke BLE entirely** (BLE_ERR_MEM_CAPACITY rc=519 at every scan start — same failure the original values were tuned to fix). Reverted both (commit afb0e0c); boot ladder back to ~330 B free — the config that ran stable all day.
+
+**PSRAM 80 MHz officially exonerated-and-rejected:** faster on the bench (77 vs 92 ms/frame) but owner-verified UNSTABLE on this Rev v1.0 board (splash text flashing, ghosting, glow, Settings-tap reset). Back to 40 MHz.
+
+**HARD WON FACTS (do not relearn):**
+- ESP32-C5 internal SRAM (~95 KB usable) is fully consumed by Wi-Fi + NimBLE + stacks. ANY new feature with an internal-RAM cost (coredump, IRAM opts, new buffers) can silently kill the display SPI path. Check the `[DMA] after all tasks` ladder after ANY sdkconfig change.
+- NimBLE transport buffer values are load-bearing for scanning. Do not trim.
+- `esp_lcd` + `psram_dma_direct`: color data path is fine from PSRAM; the per-command internal allocs are the fragile part.
+- LVGL RVV asm: RGB888 only, no-op for RGB565.
+- Display SPI 40 MHz: corrupts on this wiring. 30 MHz ceiling. `max_transfer_sz` must stay 15 KB (full-frame size boot-loops).
+- Settings-tap reset: STILL NOT CAUGHT. Coredump-to-flash is not viable (RAM cost). Must be caught over serial while tapping.
+
+**Still open:** Settings-tap reset (intermittent, happened at 80M AND 40M PSRAM), scroll fps physics cap (~13–21 fps full-screen, hardware-scroll project is the only real fix).
