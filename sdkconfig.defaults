@@ -25,10 +25,11 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions/partitions.csv"
 # PSRAM (8MB on NM-CYD-C5; ESP32-C5 supports QUAD mode only)
 # -----------------------------------------------------------------------------
 CONFIG_SPIRAM=y
-# PSRAM speed: LVGL draw buffers + pool live in PSRAM. Frame-probe A/B
-# 2026-09-26: with RVV exonerated, 80 MHz alone is the clean test of MSPI bus
-# bandwidth (render reads/writes PSRAM while DMA drains a frame from it).
-CONFIG_SPIRAM_SPEED_80M=y
+# PSRAM speed: stay at the 40 MHz default. 80 MHz measured faster on the
+# bench (77 vs 92 ms/frame) but proved UNSTABLE on this board (2026-09-26
+# owner report): splash text flashing, ghosting behind moving graphics,
+# background glow, reset on Settings tap — classic MSPI timing corruption.
+# CONFIG_SPIRAM_SPEED_80M is not set
 CONFIG_SPIRAM_USE_CAPS_ALLOC=y
 CONFIG_SPIRAM_TRY_ALLOCATE_WIFI_LWIP=y
 CONFIG_FREERTOS_TASK_CREATE_ALLOW_EXT_MEM=y
@@ -68,6 +69,9 @@ CONFIG_BT_NIMBLE_L2CAP_COC_MAX_NUM=0
 # Dropping the connection/GATT/security roles frees controller+host RAM,
 # which fixes BLE_ERR_MEM_CAPACITY (rc=519) on v6.1 with Wi-Fi coenabled.
 CONFIG_BT_NIMBLE_ROLE_CENTRAL=n
+# NOTE: trimming the transport buffers (ACL/EVT/mSys) to free internal DMA
+# RAM was tried 2026-09-26 and BROKE scanning: BLE_ERR_MEM_CAPACITY (rc=519)
+# at every scan start. Do not reduce these without re-testing BLE thoroughly.
 CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=n
 CONFIG_BT_NIMBLE_ROLE_BROADCASTER=n
 CONFIG_BT_NIMBLE_GATT_CLIENT=n
@@ -146,3 +150,9 @@ CONFIG_LV_DRAW_SW_ASM_NONE=y
 # the commit with the same number.
 CONFIG_APP_PROJECT_VER_FROM_CONFIG=y
 CONFIG_APP_PROJECT_VER="0.9.0"
+
+# Core dump to flash costs ~2 KB of internal RAM at boot and pushed the app
+# to 0-8 bytes of internal DMA RAM — every display SPI command then failed
+# and the UI froze on the splash screen (2026-09-26). Keep coredump off; the
+# Settings-tap crash must be caught over serial instead.
+# CONFIG_ESP_COREDUMP_ENABLE_TO_FLASH is not set
