@@ -195,7 +195,13 @@ static void late_init_task(void*)
         } else if (member == ble_queue) {
             BleScanResult_t dev;
             xQueueReceive(member, &dev, 0);
-            ESP_LOGI(TAG, "ble: %-20s %02X:%02X:%02X:%02X:%02X:%02X %4d dBm %c",
+            // DEBUG, not INFO: one line per advertisement (~8-9/s in busy
+            // environments). At INFO with no serial monitor draining the
+            // console, the UART TX ring buffer fills in seconds and this
+            // superloop task blocks inside esp_log — starving every queue
+            // consumer behind it (UI posts, alerts, session data). Same
+            // blocking-console shape as the 2026-08-31 freeze incident.
+            ESP_LOGD(TAG, "ble: %-20s %02X:%02X:%02X:%02X:%02X:%02X %4d dBm %c",
                      dev.name[0] ? dev.name : "<unknown>",
                      dev.mac[0], dev.mac[1], dev.mac[2], dev.mac[3], dev.mac[4], dev.mac[5],
                      dev.rssi,
@@ -210,6 +216,10 @@ static void late_init_task(void*)
 extern "C" void app_main(void)
 {
     ESP_LOGI(TAG, "SiteSurvey Pro booting...");
+    // Permanent: knowing why the previous boot ended (panic/WDT/brownout/SW)
+    // is the first thing needed when diagnosing any field reset report.
+    ESP_LOGI(TAG, "reset reason: %d (%s)", (int)esp_reset_reason(),
+             "0=POWERON 1=HARD 3=SW 4=PANIC 5=INT_WDT 6=TASK_WDT 7=BROWNOUT 8=WDT 9=DEEP_SLEEP");
     ESP_LOGI(TAG, "Target: ESP32-C5 | Flash: 16MB | PSRAM: 8MB");
     if (esp_reset_reason() == ESP_RST_DEEPSLEEP) {
         ESP_LOGI(TAG, "woke from deep sleep (BOOT button)");

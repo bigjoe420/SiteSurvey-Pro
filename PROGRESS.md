@@ -1113,3 +1113,17 @@ LVGL samples the finger once per screen redraw. Redraws during scrolling took ~6
 - Settings-tap reset: STILL NOT CAUGHT. Coredump-to-flash is not viable (RAM cost). Must be caught over serial while tapping.
 
 **Still open:** Settings-tap reset (intermittent, happened at 80M AND 40M PSRAM), scroll fps physics cap (~13–21 fps full-screen, hardware-scroll project is the only real fix).
+
+---
+
+## 2026-09-27 (early) — Session: Settings-tap reset ROOT CAUSE + fix (log flood blocking console TX)
+
+**ROOT CAUSE of the "tap Settings → device reloads" saga (and very likely several freezes):** `main.cpp` app superloop logged **every BLE advertisement at INFO level** — ~8–9 `ESP_LOGI` lines/sec in busy RF environments (~2,500 lines per 5 min, observed in capture `tools/captures/settings_tap_owner_04.txt`). With no serial monitor draining the console UART (the owner's normal use), the UART TX ring buffer fills in seconds and the superloop task **blocks inside `esp_log`** — starving every queue consumer behind it (UI posts, alerts, session data). Any UI interaction after that point (e.g. a Settings tap) hits a wedged system; symptoms ranged from frozen scroll to full resets. Same blocking-console shape as the 2026-08-31 freeze incident (which fixed only the *secondary* console — the primary UART blocks identically).
+
+**Why four serial captures "never coincided with a crash":** the capture port being open drains the TX buffer — the bug cannot fire while recording. Owner-session capture proved it: device ran 100+ minutes, ~2,500-line BLE flood, zero resets while drained.
+
+**Why the bench never reproduced it:** the direct-call harness, 8-cycle cascade harness, and synthetic-pointer indev harness (all clean, captures `settings_tap_repro_01/02/03`) exercised the entire nav path correctly — the crash was never in the nav code at all.
+
+**FIX (this commit):** per-advertisement `ble:` log demoted `ESP_LOGI` → `ESP_LOGD` (compiled-out at the default INFO level). Verified post-flash: `ble_flood_fix_check.txt` shows the flood gone (47 app lines/30 s, all boot + 1-per-5 s env/gps heartbeats). Also made the boot `reset reason:` line permanent — first thing needed for any future field reset report.
+
+**STILL OPEN:** scroll fps physics cap (~13 fps full-screen @ PSRAM 40M; ST7789 VSCSAD hardware scroll is the only real fix). Owner to confirm Settings-tap reset is gone in normal (unplugged-monitor) use.
