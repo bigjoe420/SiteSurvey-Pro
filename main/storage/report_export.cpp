@@ -124,6 +124,8 @@ esp_err_t report_export_path(const char* csv_path, char* out_path, size_t out_pa
     FILE* f = fopen(out_path, "w");
     if (!f) {
         ESP_LOGW(TAG, "fopen write failed: %s", out_path);
+        heap_caps_free(ch_obs);
+        heap_caps_free(ch_sum);
         aptable_free(&table);
         return ESP_ERR_NOT_FOUND;
     }

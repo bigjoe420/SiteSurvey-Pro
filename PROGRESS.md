@@ -1127,3 +1127,24 @@ LVGL samples the finger once per screen redraw. Redraws during scrolling took ~6
 **FIX (this commit):** per-advertisement `ble:` log demoted `ESP_LOGI` → `ESP_LOGD` (compiled-out at the default INFO level). Verified post-flash: `ble_flood_fix_check.txt` shows the flood gone (47 app lines/30 s, all boot + 1-per-5 s env/gps heartbeats). Also made the boot `reset reason:` line permanent — first thing needed for any future field reset report.
 
 **STILL OPEN:** scroll fps physics cap (~13 fps full-screen @ PSRAM 40M; ST7789 VSCSAD hardware scroll is the only real fix). Owner to confirm Settings-tap reset is gone in normal (unplugged-monitor) use.
+
+---
+
+## 2026-09-28 — Session: house-rules audit (owner-requested) + Settings-tap panic status
+
+**House rules refreshed from KIMI.md** (Commandments I–VIII, Corollaries 1–22, Standing Rules, §10 quality standards) before auditing.
+
+**Audit findings & fixes (this commit):**
+- `report_export.cpp`: `fopen write failed` path leaked the two PSRAM channel-histogram buffers (`ch_obs`/`ch_sum`) — freed `aptable` only. Fixed (Standing Rule: match allocators to frees).
+- `main.cpp`: per-AP Wi-Fi scan-result line demoted INFO → DEBUG — same per-event flood class as the BLE one fixed in 8fac3d9.
+- `main.cpp`: boot reset reason now re-announced at 30 s / 90 s / 210 s / 450 s / 930 s after boot (5 lines total, deliberately bounded — an unbounded periodic INFO log would eventually fill an undrained console TX buffer and block the superloop). The boot-time line alone was always emitted before any host was listening.
+- No TEMP DIAG leftovers anywhere in `main/` (all of tonight's harness code stripped; verified by grep).
+- LVGL thread-safety pattern verified clean: all `ui_*_post_*` entry points only copy into critical-section statics; rendering stays on `ui_task`.
+- Hot paths verified allocation-free: scan/BLE use static pools with LRU eviction; storage allocs are init/export-time only.
+- Landmines intact: PSRAM 40M, coredump-to-flash OFF, secondary console NONE, NimBLE transport buffers untrimmed, display 30 MHz, `max_transfer_sz` 15 KB.
+
+**Observations (no action taken):**
+- `sdkconfig` carries `FLASHMODE_QIO=y` while the resolved string is `"dio"` (esptool flashes DIO). Stable in practice; regenerating via fullclean risks churn — flag for the owner.
+- KIMI.md §10.2 ("draw buffers live in internal RAM, 1/10th screen") is stale: current known-good is 2 × full-frame buffers in PSRAM (Corollary 22 + 2026-09-26 commit 7c12678). Internal-RAM buffers are physically impossible now (Wi-Fi+NimBLE consume it all).
+
+**Settings-tap panic — status:** root-caused to PANIC (esp_reset_reason=4, owner-session capture `reset_caught_01.txt`) but the backtrace is still uncaught: the fault does not reproduce while a serial capture port is open (owner-verified twice, 2026-09-28 01:23/01:27). Next lever when it recurs: the 930 s re-announce window means any capture within ~15 min of a crash still classifies it; catching the live backtrace needs the owner tapping inside a coordinated capture window. Captures tonight: `settings_tap_repro_01/02/03`, `settings_tap_owner_04`, `panic_live_01/02`, `reset_caught_01`, `reason_reannounce_check`, `ble_flood_fix_check` (all under `tools/captures/`).
