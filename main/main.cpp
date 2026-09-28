@@ -141,12 +141,33 @@ static void late_init_task(void*)
     // Event loop: drains scan_queue + env_queue + ble_queue via the queue set
     bool scan_ready = false;
     bool env_ready  = false;
+
+    // Re-announce the boot reset reason a few times in the first minutes.
+    // The boot-time line is emitted before any host is listening, so a crash
+    // report can't be read back later. Bounded to 5 lines TOTAL: with no
+    // monitor draining the console, any unbounded periodic INFO log would
+    // eventually fill the UART TX ring buffer and block this task forever
+    // (the same hazard as the per-event scan floods below).
+    static const uint32_t s_reason_reprint_at_ms[] = {30000, 90000, 210000, 450000, 930000};
+    static size_t s_reason_reprint_idx = 0;
+    const TickType_t s_boot_ticks = xTaskGetTickCount();
+
     while (true) {
+        // (checked on every queue wake; env traffic guarantees ~5 s cadence)
+        uint32_t up_ms = pdTICKS_TO_MS(xTaskGetTickCount() - s_boot_ticks);
+        if (s_reason_reprint_idx < sizeof(s_reason_reprint_at_ms)/sizeof(s_reason_reprint_at_ms[0])
+            && up_ms >= s_reason_reprint_at_ms[s_reason_reprint_idx]) {
+            ESP_LOGI(TAG, "reset reason: %d", (int)esp_reset_reason());
+            s_reason_reprint_idx++;
+        }
+
         QueueSetMemberHandle_t member = xQueueSelectFromSet(qs, portMAX_DELAY);
         if (member == scan_queue) {
             ScanResult_t ap;
             xQueueReceive(member, &ap, 0);
-            ESP_LOGI(TAG, "%-32s %02X:%02X:%02X:%02X:%02X:%02X %s ch%-3u %4d dBm %c %s",
+            // DEBUG, not INFO: per-AP line during a sweep burst. Same
+            // blocking-console hazard as the BLE flood (see below).
+            ESP_LOGD(TAG, "%-32s %02X:%02X:%02X:%02X:%02X:%02X %s ch%-3u %4d dBm %c %s",
                      (const char*)ap.ssid,
                      ap.bssid[0], ap.bssid[1], ap.bssid[2], ap.bssid[3], ap.bssid[4], ap.bssid[5],
                      ap.channel <= 14 ? "2.4G" : "5G ",
