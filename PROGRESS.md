@@ -1160,3 +1160,26 @@ LVGL samples the finger once per screen redraw. Redraws during scrolling took ~6
 - `main.cpp`: corrected the reset-reason legend (was off-by-one: real enum is 1=POWERON, 4=PANIC, 9=BROWNOUT, 14=PWR_GLITCH). Earlier reads stand: 00:49 was PANIC.
 
 **Implication for the hunt:** the live-backtrace capture is now possible — keep the port open without resetting, let the device age into the fault state, tap during a long capture. PWR_GLITCH (14) and BROWNOUT (9) are also now distinguishable in the reason line if the recurrence is power-related rather than a panic.
+
+---
+
+## 2026-09-28 (~02:00) — Settings-tap panic ROOT-CAUSED and fixed
+
+**Caught live (`tools/captures/panic_live_04.txt`, 3 panics in one 285 s window after the serial_capture.py RTS fix removed the accidental reset).** All identical:
+
+```
+E spi_common: spicommon_dma_setup_priv_buffer(460): Failed to allocate priv TX buffer
+Guru Meditation Error: Core 0 panic'ed (Load access fault), MCAUSE=5, MTVAL=0
+MEPC 0x4081549a (memcpy), RA 0x40809dfe (spi_device_polling_transmit)
+```
+
+**Decoded chain:** `fread → ff_disk_read → sdmmc_read_sectors → sdspi_host_start_command → spi_device_polling_transmit → setup_priv_desc`: the SD command's 32 B priv TX buffer alloc fails (internal DMA RAM exhausted) and the IDF v6.1 cleanup path calls `uninstall_priv_desc`, which `memcpy`s into `rx_data` from the **NULL** never-assigned `buffer_to_rcv` — load fault at address 0. Upstream of it all: `sess_rescan()` on the Settings screen walking the SD FAT directory.
+
+**Why it needed uptime:** `dma_largest` (new telemetry field on the env heartbeat) is only **~288 B from boot** and drifts downward under load; once the largest free DMA block can't fit the ~48 B priv buffer, the next SD command is fatal. Display SPI commands draw from the same pool — this is the same wall documented in the splash-freeze saga, with the SD polling path as the fatal victim.
+
+**Fix (this commit):**
+- `sd_card.{h,cpp}`: `sd_dma_headroom()` — largest free DMA block ≥ 128 B.
+- Guarded every SD caller: `sess_rescan`, session-picker open (`ui_settings.cpp`), and `write_buffer` (`session_logger.cpp`, drops one batch with a warning instead of crashing mid-survey).
+- `main.cpp` env heartbeat now logs `dma_largest=` — watch it trend; if it declines over long sessions, something is still eating DMA RAM and the real fix is finding that eater.
+
+**Note:** the 2026-09-28 BLE/Wi-Fi log-flood demotions (8fac3d9, 6aa101c) were still correct hygiene but were NOT the cause — the primary UART console drops output when undrained, it never blocks.

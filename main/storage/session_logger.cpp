@@ -106,6 +106,16 @@ static void sync_dir_entry(void)
 static void write_buffer(void)
 {
     if (!s_f || s_buf_n == 0) return;
+    // Internal DMA RAM is the SPI master's per-command lifeline. Without
+    // headroom the SD transaction fails its priv-buffer alloc and the IDF
+    // cleanup path NULL-derefs (Settings-tap panic, 2026-09-28). Dropping
+    // one batch of rows beats crashing the device mid-survey.
+    if (!sd_dma_headroom()) {
+        ESP_LOGW(TAG, "no DMA headroom — dropping %d buffered entries", s_buf_n);
+        s_buf_n = 0;
+        s_last_flush = xTaskGetTickCount();
+        return;
+    }
     int n = s_buf_n;
     for (int i = 0; i < n; i++) {
         const LogEntry* e = &s_buf[i];
