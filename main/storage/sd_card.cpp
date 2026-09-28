@@ -91,3 +91,12 @@ bool sd_card_present(void)
 {
     return s_present;
 }
+
+bool sd_dma_headroom(void)
+{
+    // Largest-block (not total): a fragmented DMA heap can report plenty of
+    // total free while no single block fits the SPI priv buffer (32 B +
+    // malloc overhead ≈ 48 B). Baseline after boot is only ~288 B, so 128
+    // guards the crash state without tripping on every settings visit.
+    return heap_caps_get_largest_free_block(MALLOC_CAP_DMA) >= 128;
+}
