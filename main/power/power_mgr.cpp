@@ -101,8 +101,20 @@ static void bl_apply(uint8_t pct)
     if (!s_initialized) return;
     if (pct > 100) pct = 100;
     uint32_t duty = (pct * PM_LEDC_MAX_DUTY) / 100;
-    ledc_set_duty(PM_LEDC_MODE, PM_LEDC_CHANNEL, duty);
-    ledc_update_duty(PM_LEDC_MODE, PM_LEDC_CHANNEL);
+    uint32_t cur = ledc_get_duty(PM_LEDC_MODE, PM_LEDC_CHANNEL);
+    if (duty > cur) {
+        // Ramp upward (~150 ms). A hard step to full backlight is the
+        // device's biggest single current surge; stacked on a screen redraw
+        // it sags weak USB 5 V rails below the POR threshold and the chip
+        // resets (Settings-tap POWERON resets, 2026-09-28). The fade is
+        // invisible and spreads the surge under any host's current limit.
+        ledc_set_fade_with_time(PM_LEDC_MODE, PM_LEDC_CHANNEL, duty, 150);
+        ledc_fade_start(PM_LEDC_MODE, PM_LEDC_CHANNEL, LEDC_FADE_NO_WAIT);
+    } else {
+        // Downward (dim/off): instant — reducing load never browns out.
+        ledc_set_duty(PM_LEDC_MODE, PM_LEDC_CHANNEL, duty);
+        ledc_update_duty(PM_LEDC_MODE, PM_LEDC_CHANNEL);
+    }
     ESP_LOGD(TAG, "backlight %u%% (duty=%lu)", pct, duty);
 }
 
@@ -163,6 +175,8 @@ esp_err_t power_mgr_init(void)
     ch.duty           = 0;
     ch.hpoint         = 0;
     ESP_RETURN_ON_ERROR(ledc_channel_config(&ch), TAG, "ledc channel config failed");
+    // Required once for bl_apply's upward hardware fades.
+    ledc_fade_func_install(0);
 
     // NVS
     esp_err_t ret = nvs_open(SSP_PM_NVS_NAMESPACE, NVS_READWRITE, &s_nvs);
