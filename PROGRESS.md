@@ -1193,3 +1193,11 @@ Capture `reset_after_guard.txt` (started ~15 s after the owner's reset) shows th
 Also fixed this session: alert annunciation had no cooldown — a parked target in scan range re-matched every sweep (~10 ALERT lines/s + LED flash). Ring buffer still records every event; LED + log now throttle to once per target per 30 s.
 
 **Open: hardware reset root cause.** Prime suspect: 5 V USB delivery sagging under the Settings-tap load spike (backlight 100 % + full-screen redraw + SD + Wi-Fi TX), POR'ing the chip faster than the brownout detector. Discriminator for owner: run the device from a wall-charger USB supply (not the PC) — if Settings-tap resets vanish, it's the PC USB power path; if a reset still occurs, capture within 15 min and the reason line says 4 (panic) vs 1 (power).
+
+---
+
+## 2026-09-28 (04:35) — Hardware reset root cause CONFIRMED: PC USB power delivery
+
+Owner ran the discriminator: device on a wall-charger USB supply, Settings tapped repeatedly after sit time — **could not reproduce the reset**. On PC USB it reset reliably. Conclusion: the 5 V rail from the PC port/cable sags under the Settings-tap load spike (backlight 100 % + full-screen redraw + SD scan + Wi-Fi TX), POR'ing the chip faster than the brownout detector (which is why it logged POWERON, not BROWNOUT). The two-reset picture stands: reason 4 = SD panic (fixed in eb6578c), reason 1 = power sag (hardware, solved by supply).
+
+**Battery note for future hardware:** size the battery/boost path for peak current, not average — Wi-Fi TX + backlight + SD + display together pull roughly 0.5–0.8 A at 3.3 V in bursts. A weak boost converter or high-ESR cell will reproduce this exact bug in the field. If a sag does reach the rail in battery use, the brownout detector (level 7) will catch it and log reason 9 — distinguishable from both fixed failure modes.
