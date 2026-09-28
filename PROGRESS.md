@@ -1148,3 +1148,15 @@ LVGL samples the finger once per screen redraw. Redraws during scrolling took ~6
 - KIMI.md §10.2 ("draw buffers live in internal RAM, 1/10th screen") is stale: current known-good is 2 × full-frame buffers in PSRAM (Corollary 22 + 2026-09-26 commit 7c12678). Internal-RAM buffers are physically impossible now (Wi-Fi+NimBLE consume it all).
 
 **Settings-tap panic — status:** root-caused to PANIC (esp_reset_reason=4, owner-session capture `reset_caught_01.txt`) but the backtrace is still uncaught: the fault does not reproduce while a serial capture port is open (owner-verified twice, 2026-09-28 01:23/01:27). Next lever when it recurs: the 930 s re-announce window means any capture within ~15 min of a crash still classifies it; catching the live backtrace needs the owner tapping inside a coordinated capture window. Captures tonight: `settings_tap_repro_01/02/03`, `settings_tap_owner_04`, `panic_live_01/02`, `reset_caught_01`, `reason_reannounce_check`, `ble_flood_fix_check` (all under `tools/captures/`).
+
+---
+
+## 2026-09-28 (later) — Breakthrough: capture tool was resetting the device
+
+**Root cause of "fault only fires when nobody is watching": `tools/serial_capture.py` itself.** pyserial asserts RTS/DTR on port open; on the ESP32 auto-reset circuit RTS drives EN, so EVERY capture start pulsed EN and hard-reset the device. Every "coordinated capture" gave the device a fresh boot — and the owner verified the panic is **uptime/state-dependent**: "I let it sit a bit after the reset and it started doing it again" (01:40). The 00:49 panic (reason 4, real CPU exception) was genuine; tonight's recurrence boot read POWERON only because the capture-open reset contaminated the evidence.
+
+**Fixes (this commit):**
+- `serial_capture.py`: `setRTS(False)` + `setDTR(False)` immediately after open. Verified: consecutive opens no longer produce a boot banner in steady state. (First open right after esptool flashing still pulses once — esptool leaves the lines asserted; harmless for diagnostics, note when interpreting captures.)
+- `main.cpp`: corrected the reset-reason legend (was off-by-one: real enum is 1=POWERON, 4=PANIC, 9=BROWNOUT, 14=PWR_GLITCH). Earlier reads stand: 00:49 was PANIC.
+
+**Implication for the hunt:** the live-backtrace capture is now possible — keep the port open without resetting, let the device age into the fault state, tap during a long capture. PWR_GLITCH (14) and BROWNOUT (9) are also now distinguishable in the reason line if the recurrence is power-related rather than a panic.
