@@ -2230,9 +2230,13 @@ void ui_settings_set_visible(bool visible)
         refresh_bssid_list();
         refresh_power_labels();
         refresh_filter_labels();
-        // Defer the SD directory scan until after the first paint — it blocks
-        // ui_task for the whole FAT walk on the display-shared SPI bus.
-        lv_async_call([](void*) { sess_rescan(); }, nullptr);
+        // Defer the SD directory scan: it blocks ui_task for the whole FAT
+        // walk on the display-shared SPI bus, and its current draw stacked
+        // on the entry redraw + backlight ramp browns out weak USB sources
+        // (POWERON resets, 2026-09-28). One-shot timer at +800 ms puts the
+        // scan past both surges.
+        lv_timer_create([](lv_timer_t* t) { sess_rescan(); lv_timer_delete(t); },
+                        800, nullptr);
 
         // Reset scroll state for smooth entry
         if (s_panel) {

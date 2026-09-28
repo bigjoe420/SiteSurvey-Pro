@@ -1201,3 +1201,14 @@ Also fixed this session: alert annunciation had no cooldown — a parked target 
 Owner ran the discriminator: device on a wall-charger USB supply, Settings tapped repeatedly after sit time — **could not reproduce the reset**. On PC USB it reset reliably. Conclusion: the 5 V rail from the PC port/cable sags under the Settings-tap load spike (backlight 100 % + full-screen redraw + SD scan + Wi-Fi TX), POR'ing the chip faster than the brownout detector (which is why it logged POWERON, not BROWNOUT). The two-reset picture stands: reason 4 = SD panic (fixed in eb6578c), reason 1 = power sag (hardware, solved by supply).
 
 **Battery note for future hardware:** size the battery/boost path for peak current, not average — Wi-Fi TX + backlight + SD + display together pull roughly 0.5–0.8 A at 3.3 V in bursts. A weak boost converter or high-ESR cell will reproduce this exact bug in the field. If a sag does reach the rail in battery use, the brownout detector (level 7) will catch it and log reason 9 — distinguishable from both fixed failure modes.
+
+---
+
+## 2026-09-28 (~05:00) — Load-spike flattening: the reset fix proper
+
+Owner rejection of the "wall-charger workaround" was correct — the fix is to flatten the surge in software so any USB host survives it. Two changes:
+
+- **Backlight ramp** (`power_mgr.cpp`): upward brightness transitions now use the LEDC hardware fade over 150 ms (fade driver installed at init). Instant full backlight was the device's biggest single current step; downward transitions stay instant (reducing load never browns out). Boot also gains a soft fade-in.
+- **Staggered SD scan** (`ui_settings.cpp`): the settings-entry session scan moved from `lv_async_call` (immediately after first paint) to a one-shot LVGL timer at +800 ms, so the card's draw lands past the redraw surge and the backlight ramp.
+
+Owner verification pending: back on PC USB power (the original failing source), let it sit, hammer Settings.
