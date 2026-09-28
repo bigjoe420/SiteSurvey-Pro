@@ -240,7 +240,7 @@ extern "C" void app_main(void)
     // Permanent: knowing why the previous boot ended (panic/WDT/brownout/SW)
     // is the first thing needed when diagnosing any field reset report.
     ESP_LOGI(TAG, "reset reason: %d (%s)", (int)esp_reset_reason(),
-             "0=POWERON 1=HARD 3=SW 4=PANIC 5=INT_WDT 6=TASK_WDT 7=BROWNOUT 8=WDT 9=DEEP_SLEEP");
+             "1=POWERON 3=SW 4=PANIC 5=INT_WDT 6=TASK_WDT 7=WDT 8=DEEPSLEEP 9=BROWNOUT 14=PWR_GLITCH");
     ESP_LOGI(TAG, "Target: ESP32-C5 | Flash: 16MB | PSRAM: 8MB");
     if (esp_reset_reason() == ESP_RST_DEEPSLEEP) {
         ESP_LOGI(TAG, "woke from deep sleep (BOOT button)");
