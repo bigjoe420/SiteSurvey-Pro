@@ -12,6 +12,7 @@
 #include "kml_export.h"
 #include "report_export.h"
 #include "session_csv.h"
+#include "sd_card.h"
 #include "esp_heap_caps.h"
 #include "esp_app_desc.h"
 #include "esp_system.h"
@@ -339,6 +340,13 @@ static void sess_rescan(void)
         sess_refresh_label();
         return;
     }
+    // No DMA headroom: an SD command would fail its priv-buffer alloc and the
+    // IDF cleanup NULL-derefs (panic). Keep the old list; retry next visit.
+    if (!sd_dma_headroom()) {
+        ESP_LOGW("settings", "sess_rescan: no DMA headroom, keeping cached list");
+        sess_refresh_label();
+        return;
+    }
     uint32_t t0 = esp_log_timestamp();
     s_sess_count = csv_list_sessions(s_sess_files, SESS_MAX);
     ESP_LOGI("settings", "sess_rescan: %d sessions in %lu ms",
@@ -373,6 +381,11 @@ static void sess_cancel_cb(lv_event_t*)
 static void sess_open_cb(lv_event_t*)
 {
     if (!s_sess_modal || !s_sess_list) return;
+    // See sess_rescan: never touch the SD without DMA headroom.
+    if (!sd_dma_headroom()) {
+        ESP_LOGW("settings", "sess_open: no DMA headroom, scan deferred");
+        return;
+    }
     uint32_t t0 = esp_log_timestamp();
     lv_obj_clean(s_sess_list);
     lv_obj_scroll_to_y(s_sess_list, 0, LV_ANIM_OFF);

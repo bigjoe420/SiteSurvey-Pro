@@ -192,11 +192,15 @@ static void late_init_task(void*)
 
             if (snap.env_valid) {
                 int32_t t = snap.env.temp_c_x100;
-                ESP_LOGI(TAG, "env: %ld.%02ld C  %lu.%02lu %%RH  %lu Pa  gas %lu ohm",
+                // dma_largest: early warning for the SPI priv-buffer wall
+                // that killed Settings taps (2026-09-28). If this trends
+                // toward 0, SD/display SPI transactions start failing.
+                ESP_LOGI(TAG, "env: %ld.%02ld C  %lu.%02lu %%RH  %lu Pa  gas %lu ohm  dma_largest=%u",
                          (long)(t / 100), (long)(labs(t) % 100),
                          (unsigned long)(snap.env.hum_x100 / 100),
                          (unsigned long)(snap.env.hum_x100 % 100),
-                         (unsigned long)snap.env.press_pa, (unsigned long)snap.env.gas_ohm);
+                         (unsigned long)snap.env.press_pa, (unsigned long)snap.env.gas_ohm,
+                         (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_DMA));
             }
             if (snap.gps.fix_valid) {
                 ESP_LOGI(TAG, "gps: fix q=%u sats=%u lat=%ld.%07ld lon=%ld.%07ld utc=%06lu",
