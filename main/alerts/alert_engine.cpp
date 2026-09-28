@@ -233,8 +233,20 @@ void alert_check(const ScanResult_t* ap, const GpsState* gps)
     if (matched) {
         log_alert(&e);
         xQueueSend(s_queue, &e, 0);  // non-blocking; drop if queue full
-        led_rgb_alert();              // flash LED red
-        ESP_LOGI(TAG, "ALERT: %s | %s | ch%u | %d dBm | type=%u",
-                 e.timestamp, e.target, e.channel, e.rssi, (unsigned)e.match_type);
+        // Throttle the visible/expensive side effects: a parked target in
+        // scan range re-matches on every sweep (~10/s), and each hit was
+        // flashing the LED + logging at INFO. The ring buffer keeps every
+        // event; the LED and log fire at most once per target per 30 s.
+        static char s_last_announced[sizeof(e.target)];
+        static uint32_t s_last_announced_at;
+        bool announce = strncmp(s_last_announced, e.target, sizeof(s_last_announced)) != 0
+                        || (esp_log_timestamp() - s_last_announced_at) > 30000;
+        if (announce) {
+            snprintf(s_last_announced, sizeof(s_last_announced), "%s", e.target);
+            s_last_announced_at = esp_log_timestamp();
+            led_rgb_alert();              // flash LED red
+            ESP_LOGI(TAG, "ALERT: %s | %s | ch%u | %d dBm | type=%u",
+                     e.timestamp, e.target, e.channel, e.rssi, (unsigned)e.match_type);
+        }
     }
 }

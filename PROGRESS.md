@@ -1183,3 +1183,13 @@ MEPC 0x4081549a (memcpy), RA 0x40809dfe (spi_device_polling_transmit)
 - `main.cpp` env heartbeat now logs `dma_largest=` — watch it trend; if it declines over long sessions, something is still eating DMA RAM and the real fix is finding that eater.
 
 **Note:** the 2026-09-28 BLE/Wi-Fi log-flood demotions (8fac3d9, 6aa101c) were still correct hygiene but were NOT the cause — the primary UART console drops output when undrained, it never blocks.
+
+---
+
+## 2026-09-28 (~03:10) — Owner's 03:02 reset was HARDWARE (reason 1 POWERON), not the panic
+
+Capture `reset_after_guard.txt` (started ~15 s after the owner's reset) shows the post-reset boot reading **reset reason 1 (POWERON)** — a power/reset-pin event, NOT the software panic. The guard build (eb6578c) was confirmed active on the device (dma_largest telemetry present), so the SD-panic fix held; the remaining symptom is a hardware-class reset. The capture also exposed: `dma_largest` stays ~288 B from boot, then collapses to **0** in a transient window ~30 s after boot (Wi-Fi+BLE coexistence scan + session-start + alert flood all land together), recovering minutes later — the DMA wall is transient, not a monotonic leak.
+
+Also fixed this session: alert annunciation had no cooldown — a parked target in scan range re-matched every sweep (~10 ALERT lines/s + LED flash). Ring buffer still records every event; LED + log now throttle to once per target per 30 s.
+
+**Open: hardware reset root cause.** Prime suspect: 5 V USB delivery sagging under the Settings-tap load spike (backlight 100 % + full-screen redraw + SD + Wi-Fi TX), POR'ing the chip faster than the brownout detector. Discriminator for owner: run the device from a wall-charger USB supply (not the PC) — if Settings-tap resets vanish, it's the PC USB power path; if a reset still occurs, capture within 15 min and the reason line says 4 (panic) vs 1 (power).
