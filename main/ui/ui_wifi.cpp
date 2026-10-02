@@ -86,7 +86,6 @@ static void build_row(lv_obj_t* parent, Row* r, int idx)
     // No click callback is attached to the row itself — only the detail_btn
     // opens the graph, so accidental detail opens are still prevented.
     lv_obj_add_flag(r->row, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_add_flag(r->row, LV_OBJ_FLAG_SCROLL_CHAIN);
     lv_obj_set_pos(r->row, 0, idx * ROW_STRIDE);
     lv_obj_set_size(r->row, ROW_W, ROW_H);
     lv_obj_set_style_bg_color(r->row, lv_color_black(), 0);
@@ -293,11 +292,6 @@ static void do_refresh(void)
     }
 }
 
-static void refresh(lv_timer_t*)
-{
-    do_refresh();
-}
-
 static void back_cb(lv_event_t*)
 {
     ui_home_load();
@@ -382,7 +376,7 @@ lv_obj_t* ui_wifi_create(void)
     lv_obj_center(back_lbl);
 
     // Rows are NOT built here — lazy creation in do_refresh() keeps this fast.
-    s_timer = lv_timer_create(refresh, 5000, nullptr);
+    s_timer = lv_timer_create([](lv_timer_t*) { do_refresh(); }, 5000, nullptr);
     s_scr = scr;
     return scr;
 }
