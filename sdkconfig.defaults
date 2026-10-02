@@ -149,7 +149,7 @@ CONFIG_LV_DRAW_SW_ASM_NONE=y
 # and used by the OTA same-version warning). Bump before each release and tag
 # the commit with the same number.
 CONFIG_APP_PROJECT_VER_FROM_CONFIG=y
-CONFIG_APP_PROJECT_VER="0.9.0"
+CONFIG_APP_PROJECT_VER="1.0.0"
 
 # Core dump to flash costs ~2 KB of internal RAM at boot and pushed the app
 # to 0-8 bytes of internal DMA RAM — every display SPI command then failed
