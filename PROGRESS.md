@@ -1224,3 +1224,9 @@ All work through `ece68ee` (load-spike flattening) pushed to `origin/main` (`big
 - SHIPPED, owner-verification PENDING: load-spike flattening (`ece68ee` — 150 ms backlight ramp-up, SD scan deferred 800 ms). Test protocol: power from PC USB (the original failing source), let it sit, hammer Settings. Reason line distinguishes any residual reset: 4 = software panic, 1 = power, 9 = brownout.
 - NEXT PROJECT when owner is ready: ST7789 VSCSAD hardware scroll — the only real fix for the ~13 fps full-screen settings scroll cap.
 - Housekeeping debt: ROADMAP.md/KIMI.md still reference `D:\SiteSurvey Pro` and IDF v6.0.1; reality is `C:\Development\SiteSurvey Pro` + ESP-IDF v6.1 (`python idf_run.py build/flash`, device COM3).
+
+---
+
+## 2026-10-01 (23:20) — OWNER DECISION: software is complete; no scroll project
+
+Owner ruling: once the PC-USB verification of the reset fix (`ece68ee`) passes, **the software is done**. The ~13 fps full-screen settings scroll is the hardware's physics ceiling (30 MHz shared-SPI bus, owner-verified; 40 MHz corrupts on this wiring) — it is an ACCEPTED limit, not an open item. **Do not propose or start the ST7789 VSCSAD hardware-scroll project.** Any future session: treat scroll fps as closed, the same way PSRAM 80 MHz and 40 MHz SPI are closed.
