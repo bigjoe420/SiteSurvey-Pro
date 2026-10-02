@@ -4,8 +4,8 @@
 
 > **Single source of truth for project direction.** Update this file when milestones land.
 > **Last updated:** 2026-10-02
-> **Workspace:** `D:\SiteSurvey Pro` | **GitHub (manual backup only):** `bigjoe420/SiteSurvey-Pro`
-> **Platform:** NM-CYD-C5 (ESP32-C5 RISC-V, ESP-IDF v6.0.1)
+> **Workspace:** `C:\Development\SiteSurvey Pro` | **GitHub (manual backup only):** `bigjoe420/SiteSurvey-Pro`
+> **Platform:** NM-CYD-C5 (ESP32-C5 RISC-V, ESP-IDF v6.1)
 > **Manufacturer Repo:** https://github.com/RockBase-iot/NM-CYD-C5
 
 ---
@@ -32,7 +32,7 @@ Hardware verification and board support package (BSP) establishment completed.
 | Subsystem | Component | Status | Key Parameters |
 |-----------|-----------|--------|----------------|
 | MCU | ESP32-C5-WROOM-1 (RISC-V @ 240 MHz) | ✅ | 16MB Flash, 8MB PSRAM |
-| Framework | ESP-IDF v6.0.1 | ✅ | Ubuntu 24.04 LTS build host |
+| Framework | ESP-IDF v6.1 | ✅ | Windows 11 build host |
 | Display | 2.8" ST7789 | ✅ | 320×240 landscape, SPI 20 MHz |
 | Touch | XPT2046 Resistive | ✅ | Shared SPI, CS=GPIO1, 2.5 MHz |
 | PSRAM | 8MB | ✅ | `CONFIG_SPIRAM=y` required |
@@ -226,7 +226,7 @@ main  ──→ stable releases (tagged: v0.1, v0.2, etc.)
 
 ### Adding New Features
 1. Add to this roadmap with `[planned]` status
-2. Implement with reference docs verified from `D:\SiteSurvey Pro\docs\` and manufacturer repo
+2. Implement with reference docs verified from `C:\Development\SiteSurvey Pro\docs\` and manufacturer repo
 3. Test on target hardware before declaring done
 4. Update this doc with `[done]` status
 5. Tag a new milestone build

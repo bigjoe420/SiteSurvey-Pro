@@ -69,6 +69,21 @@ __pycache__/
 *.rej
 
 # -----------------------------------------------------------------------------
+# Diagnostic captures (generated on-device/serial, never committed)
+# -----------------------------------------------------------------------------
+tools/captures/
+tools/*.txt
+tools/*.csv
+
+# -----------------------------------------------------------------------------
+# Owner data captures (SD backups, serial dumps, on-device survey exports)
+# -----------------------------------------------------------------------------
+sessions-backup-*/
+/boot_capture.txt
+/survey_*.csv
+/survey_*.kml
+
+# -----------------------------------------------------------------------------
 # Documentation (keep structure, ignore generated)
 # -----------------------------------------------------------------------------
 # Keep docs/ folder but ignore downloaded/generated files if needed
