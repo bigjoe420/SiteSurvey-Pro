@@ -282,16 +282,11 @@ static bool sf_matches(const ScanResult_t* ap)
     return true;
 }
 
-int scan_engine_snapshot_filtered(ScanResult_t* out, int max)
+// Shared snapshot finalizer: strongest first, then mark rogue APs
+// (same SSID, different BSSID = potential evil twin). Insertion sort is
+// plenty for <= 64 entries.
+static void snapshot_finalize(ScanResult_t* out, int n)
 {
-    taskENTER_CRITICAL(&s_pool_mux);
-    int n = 0;
-    for (const PoolEntry& e : s_pool) {
-        if (e.used && sf_matches(&e.ap) && n < max) out[n++] = e.ap;
-    }
-    taskEXIT_CRITICAL(&s_pool_mux);
-
-    // Strongest first
     for (int i = 1; i < n; i++) {
         ScanResult_t key = out[i];
         int j = i - 1;
@@ -302,10 +297,9 @@ int scan_engine_snapshot_filtered(ScanResult_t* out, int max)
         out[j + 1] = key;
     }
 
-    // Rogue detection
     for (int i = 0; i < n; i++) out[i].rogue = false;
     for (int i = 0; i < n; i++) {
-        if (out[i].ssid[0] == 0) continue;
+        if (out[i].ssid[0] == 0) continue;  // skip hidden
         for (int j = i + 1; j < n; j++) {
             if (out[j].ssid[0] == 0) continue;
             if (strcmp((const char*)out[i].ssid, (const char*)out[j].ssid) == 0) {
@@ -316,6 +310,18 @@ int scan_engine_snapshot_filtered(ScanResult_t* out, int max)
             }
         }
     }
+}
+
+int scan_engine_snapshot_filtered(ScanResult_t* out, int max)
+{
+    taskENTER_CRITICAL(&s_pool_mux);
+    int n = 0;
+    for (const PoolEntry& e : s_pool) {
+        if (e.used && sf_matches(&e.ap) && n < max) out[n++] = e.ap;
+    }
+    taskEXIT_CRITICAL(&s_pool_mux);
+
+    snapshot_finalize(out, n);
     return n;
 }
 
@@ -359,34 +365,7 @@ int scan_engine_snapshot(ScanResult_t* out, int max)
     }
     taskEXIT_CRITICAL(&s_pool_mux);
 
-    // Strongest first; insertion sort is plenty for <= 64 entries
-    for (int i = 1; i < n; i++) {
-        ScanResult_t key = out[i];
-        int j = i - 1;
-        while (j >= 0 && out[j].rssi < key.rssi) {
-            out[j + 1] = out[j];
-            j--;
-        }
-        out[j + 1] = key;
-    }
-
-    // Rogue AP detection: same SSID, different BSSID = potential evil twin
-    for (int i = 0; i < n; i++) {
-        out[i].rogue = false;
-    }
-    for (int i = 0; i < n; i++) {
-        if (out[i].ssid[0] == 0) continue;  // skip hidden
-        for (int j = i + 1; j < n; j++) {
-            if (out[j].ssid[0] == 0) continue;
-            if (strcmp((const char*)out[i].ssid, (const char*)out[j].ssid) == 0) {
-                if (memcmp(out[i].bssid, out[j].bssid, 6) != 0) {
-                    out[i].rogue = true;
-                    out[j].rogue = true;
-                }
-            }
-        }
-    }
-
+    snapshot_finalize(out, n);
     return n;
 }
 
