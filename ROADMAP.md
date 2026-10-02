@@ -191,7 +191,7 @@ Hardware verification and board support package (BSP) establishment completed.
 | Deepsleep wake GPIO | Known | GPIO 0 is wake source. Must be HIGH at boot. |
 | SD card FAT health | Repaired 2026-09-13 | Cross-linked dir entry (`survey_19700101_000025_13.csv`, unit 133) made device `readdir` return zero entries while single-file access still worked — the blank picker root cause. Fixed by PC `chkdsk /F` after full backup to `sessions-backup-20260912/`. Write-gremlin watch item continues: `current_session` pointer file reads 0 bytes; one 0-byte session stub seen since. |
 | Settings-tap reset | Resolved 2026-09-28 | Two stacked failure modes, both fixed: (1) software — SD command priv-buffer alloc fail → IDF v6.1 cleanup NULL-deref panic (reason 4), guarded via `sd_dma_headroom()` on all SD callers; (2) hardware — PC USB 5 V sag under the tap load spike → POWERON reset (reason 1), mitigated in software by ramping the backlight up over 150 ms and deferring the SD scan 800 ms past the entry redraw. Wall-charger verified; PC-USB re-verification pending owner. |
-| Settings scroll | Physics-bound (2026-09-26) | Root cause found 2026-09-18 (LVGL samples per redraw; SPI bus speed) and measured 2026-09-26: full-screen settings scroll ~92 ms/frame @ PSRAM 40M = ~13 fps hardware cap on the shared MSPI bus. Remaining real fix = ST7789 VSCSAD hardware scroll (deferred project). |
+| Settings scroll | Physics-bound, OWNER-ACCEPTED (2026-10-01) | ~13 fps full-screen cap is the hardware ceiling (30 MHz shared-SPI bus; 40 MHz corrupts on this wiring). Root causes fixed across Sep sessions; owner has accepted the limit. No VSCSAD hardware-scroll project — do not reopen. |
 
 ---
 
