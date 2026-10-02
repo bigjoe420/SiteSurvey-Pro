@@ -845,11 +845,6 @@ static void rssi_plus_cb(lv_event_t*)
     save_config();
 }
 
-static void rssi_label_cb(lv_event_t*)
-{
-    open_modal(2, -1);
-}
-
 static void ssid_delete_cb(lv_event_t* e)
 {
     int idx = (int)(intptr_t)lv_event_get_user_data(e);

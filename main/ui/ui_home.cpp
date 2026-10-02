@@ -29,103 +29,39 @@ static bool nav_guard(void)
     return true;
 }
 
-static void wifi_btn_cb(lv_event_t*)
+// One row per destination screen; each button's user_data points at its row.
+struct NavEntry {
+    lv_obj_t** scr;               // lazy screen slot
+    lv_obj_t*  (*create)(void);   // screen factory
+    void       (*set_visible)(bool);
+};
+
+static NavEntry s_nav[] = {
+    { &s_wifi_scr,     ui_wifi_create,     ui_wifi_set_visible     },
+    { &s_ble_scr,      ui_ble_create,      ui_ble_set_visible      },
+    { &s_spectrum_scr, ui_spectrum_create, ui_spectrum_set_visible },
+    { &s_env_scr,      ui_env_create,      ui_env_set_visible      },
+    { &s_gps_scr,      ui_gps_create,      ui_gps_set_visible      },
+    { &s_alerts_scr,   ui_alerts_create,   ui_alerts_set_visible   },
+    { &s_settings_scr, ui_settings_create, ui_settings_set_visible },
+};
+static constexpr int NAV_COUNT = sizeof(s_nav) / sizeof(s_nav[0]);
+
+// Show exactly one screen: lazy-create if needed, load it, hide the rest.
+static void nav_go(NavEntry* nav)
 {
     if (!nav_guard()) return;
-    if (!s_wifi_scr) s_wifi_scr = ui_wifi_create();
-    lv_screen_load(s_wifi_scr);
-    ui_wifi_set_visible(true);
-    ui_ble_set_visible(false);
-    ui_env_set_visible(false);
-    ui_spectrum_set_visible(false);
-    ui_gps_set_visible(false);
-    ui_alerts_set_visible(false);
-    ui_settings_set_visible(false);
+    if (!*nav->scr) *nav->scr = nav->create();
+    if (!*nav->scr) return;
+    lv_screen_load(*nav->scr);
+    for (int i = 0; i < NAV_COUNT; i++) {
+        s_nav[i].set_visible(&s_nav[i] == nav);
+    }
 }
 
-static void ble_btn_cb(lv_event_t*)
+static void nav_btn_cb(lv_event_t* e)
 {
-    if (!nav_guard()) return;
-    if (!s_ble_scr) s_ble_scr = ui_ble_create();
-    lv_screen_load(s_ble_scr);
-    ui_ble_set_visible(true);
-    ui_wifi_set_visible(false);
-    ui_env_set_visible(false);
-    ui_spectrum_set_visible(false);
-    ui_gps_set_visible(false);
-    ui_alerts_set_visible(false);
-    ui_settings_set_visible(false);
-}
-
-static void spectrum_btn_cb(lv_event_t*)
-{
-    if (!nav_guard()) return;
-    if (!s_spectrum_scr) s_spectrum_scr = ui_spectrum_create();
-    lv_screen_load(s_spectrum_scr);
-    ui_spectrum_set_visible(true);
-    ui_wifi_set_visible(false);
-    ui_ble_set_visible(false);
-    ui_env_set_visible(false);
-    ui_gps_set_visible(false);
-    ui_alerts_set_visible(false);
-    ui_settings_set_visible(false);
-}
-
-static void env_btn_cb(lv_event_t*)
-{
-    if (!nav_guard()) return;
-    if (!s_env_scr) s_env_scr = ui_env_create();
-    lv_screen_load(s_env_scr);
-    ui_env_set_visible(true);
-    ui_wifi_set_visible(false);
-    ui_ble_set_visible(false);
-    ui_spectrum_set_visible(false);
-    ui_gps_set_visible(false);
-    ui_alerts_set_visible(false);
-    ui_settings_set_visible(false);
-}
-
-static void gps_btn_cb(lv_event_t*)
-{
-    if (!nav_guard()) return;
-    if (!s_gps_scr) s_gps_scr = ui_gps_create();
-    lv_screen_load(s_gps_scr);
-    ui_gps_set_visible(true);
-    ui_wifi_set_visible(false);
-    ui_ble_set_visible(false);
-    ui_env_set_visible(false);
-    ui_spectrum_set_visible(false);
-    ui_alerts_set_visible(false);
-    ui_settings_set_visible(false);
-}
-
-static void alerts_btn_cb(lv_event_t*)
-{
-    if (!nav_guard()) return;
-    if (!s_alerts_scr) s_alerts_scr = ui_alerts_create();
-    lv_screen_load(s_alerts_scr);
-    ui_alerts_set_visible(true);
-    ui_wifi_set_visible(false);
-    ui_ble_set_visible(false);
-    ui_env_set_visible(false);
-    ui_spectrum_set_visible(false);
-    ui_gps_set_visible(false);
-    ui_settings_set_visible(false);
-}
-
-static void settings_btn_cb(lv_event_t*)
-{
-    if (!nav_guard()) return;
-    if (!s_settings_scr) s_settings_scr = ui_settings_create();
-    if (!s_settings_scr) return;
-    lv_screen_load(s_settings_scr);
-    ui_settings_set_visible(true);
-    ui_wifi_set_visible(false);
-    ui_ble_set_visible(false);
-    ui_env_set_visible(false);
-    ui_spectrum_set_visible(false);
-    ui_gps_set_visible(false);
-    ui_alerts_set_visible(false);
+    nav_go((NavEntry*)lv_event_get_user_data(e));
 }
 
 // ---------------------------------------------------------------------------
@@ -135,7 +71,7 @@ static void settings_btn_cb(lv_event_t*)
 static lv_obj_t* make_block(lv_obj_t* parent, const char* label_text,
                             lv_color_t bg_top, lv_color_t bg_bot,
                             lv_color_t press_top, lv_color_t press_bot,
-                            lv_event_cb_t cb, int x, int y, int w)
+                            NavEntry* nav, int x, int y, int w)
 {
     const int H = 44;
 
@@ -165,7 +101,7 @@ static lv_obj_t* make_block(lv_obj_t* parent, const char* label_text,
     lv_obj_set_style_shadow_opa(btn, LV_OPA_30, 0);
     lv_obj_set_style_shadow_spread(btn, 1, 0);
 
-    lv_obj_add_event_cb(btn, cb, LV_EVENT_CLICKED, nullptr);
+    lv_obj_add_event_cb(btn, nav_btn_cb, LV_EVENT_CLICKED, nav);
 
     lv_obj_t* lbl = lv_label_create(btn);
     lv_label_set_text(lbl, label_text);
@@ -207,43 +143,43 @@ lv_obj_t* ui_home_create(void)
     make_block(s_home, "Wi-Fi",
                lv_color_hex(0x66BB6A), lv_color_hex(0x2E7D32),
                lv_color_hex(0x388E3C), lv_color_hex(0x1B5E20),
-               wifi_btn_cb, X0, Y0, 144);
+               &s_nav[0], X0, Y0, 144);
 
     // BLUETOOTH — electric cyan gradient
     make_block(s_home, "BLUETOOTH",
                lv_color_hex(0x26C6DA), lv_color_hex(0x00838F),
                lv_color_hex(0x0097A7), lv_color_hex(0x006064),
-               ble_btn_cb, X1, Y0, 144);
+               &s_nav[1], X1, Y0, 144);
 
     // SPECTRUM — warm orange gradient
     make_block(s_home, "SPECTRUM",
                lv_color_hex(0xFFA726), lv_color_hex(0xEF6C00),
                lv_color_hex(0xF57C00), lv_color_hex(0xE65100),
-               spectrum_btn_cb, X0, Y1, 144);
+               &s_nav[2], X0, Y1, 144);
 
     // ENVIRONMENT — sky blue gradient
     make_block(s_home, "ENVIRONMENT",
                lv_color_hex(0x42A5F5), lv_color_hex(0x1565C0),
                lv_color_hex(0x1976D2), lv_color_hex(0x0D47A1),
-               env_btn_cb, X1, Y1, 144);
+               &s_nav[3], X1, Y1, 144);
 
     // GPS — royal purple gradient
     make_block(s_home, "GPS",
                lv_color_hex(0xAB47BC), lv_color_hex(0x6A1B9A),
                lv_color_hex(0x8E24AA), lv_color_hex(0x4A148C),
-               gps_btn_cb, X0, Y2, 144);
+               &s_nav[4], X0, Y2, 144);
 
     // ALERTS — alert red gradient
     make_block(s_home, "ALERTS",
                lv_color_hex(0xEF5350), lv_color_hex(0xC62828),
                lv_color_hex(0xD32F2F), lv_color_hex(0xB71C1C),
-               alerts_btn_cb, X1, Y2, 144);
+               &s_nav[5], X1, Y2, 144);
 
     // SETTINGS — gunmetal steel gradient, full width
     make_block(s_home, "SETTINGS",
                lv_color_hex(0x90A4AE), lv_color_hex(0x455A64),
                lv_color_hex(0x607D8B), lv_color_hex(0x263238),
-               settings_btn_cb, X0, Y3, 304);
+               &s_nav[6], X0, Y3, 304);
 
     return s_home;
 }
@@ -253,11 +189,5 @@ void ui_home_load(void)
     if (!nav_guard()) return;
     if (!s_home) s_home = ui_home_create();
     lv_screen_load(s_home);
-    ui_wifi_set_visible(false);
-    ui_ble_set_visible(false);
-    ui_env_set_visible(false);
-    ui_spectrum_set_visible(false);
-    ui_gps_set_visible(false);
-    ui_alerts_set_visible(false);
-    ui_settings_set_visible(false);
+    for (int i = 0; i < NAV_COUNT; i++) s_nav[i].set_visible(false);
 }
