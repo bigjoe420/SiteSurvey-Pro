@@ -3,7 +3,7 @@
 ================================================================================
 
 > **Single source of truth for project direction.** Update this file when milestones land.
-> **Last updated:** 2026-09-13
+> **Last updated:** 2026-10-02
 > **Workspace:** `D:\SiteSurvey Pro` | **GitHub (manual backup only):** `bigjoe420/SiteSurvey-Pro`
 > **Platform:** NM-CYD-C5 (ESP32-C5 RISC-V, ESP-IDF v6.0.1)
 > **Manufacturer Repo:** https://github.com/RockBase-iot/NM-CYD-C5
@@ -84,7 +84,7 @@ Hardware verification and board support package (BSP) establishment completed.
 - [x] GPS tagging of scan logs — implemented 2026-08-24, hardened 2026-09-04 (last-known-position cache)
 - [x] WS2812 RGB LED driver + alert hook — verified on-device 2026-09-04 (commit `e2be03b`)
 
-### Phase 3: Polish & Hardening — 🟡 ACTIVE
+### Phase 3: Polish & Hardening — ✅ CLOSED (2026-10-02, software complete per owner ruling)
 - [x] On-device RSSI graphing (RSSI over time per AP) — detail chart since 2026-09-04; upgraded 2026-09-10: 64-sample (~5 min) window, min/max/avg stats, grid + dBm corner labels, live tier color
 - [x] Power management & battery life optimization — partial 2026-09-11: idle dim (31.8 s), auto power-off presets (0/15/30/60/120 min, NVS-persisted, deep sleep on touch-idle, BOOT wake), power-off button — verified on-device (commit `01209ac`); battery sensing still hardware-blocked (no battery connector)
 - [x] UI theme system — landed 2026-09-11 (`e265bad`): `ui_theme` module, single dark palette, tier colors resolved through `ui_theme_tier_color()`. Outdoor light variant was added 2026-09-11 and removed 2026-09-12 per owner decision (`3da7e7c`) — white-on-white visibility regressions, dark UI is permanent
@@ -190,7 +190,7 @@ Hardware verification and board support package (BSP) establishment completed.
 | GPIO 8/9 I2C conflict | Known | Also used for CC1101/NRF24 in Bruce firmware. Reserved for I2C only. |
 | Deepsleep wake GPIO | Known | GPIO 0 is wake source. Must be HIGH at boot. |
 | SD card FAT health | Repaired 2026-09-13 | Cross-linked dir entry (`survey_19700101_000025_13.csv`, unit 133) made device `readdir` return zero entries while single-file access still worked — the blank picker root cause. Fixed by PC `chkdsk /F` after full backup to `sessions-backup-20260912/`. Write-gremlin watch item continues: `current_session` pointer file reads 0 bytes; one 0-byte session stub seen since. |
-| Settings-tap reset | Resolved 2026-09-28 | Two stacked failure modes, both fixed: (1) software — SD command priv-buffer alloc fail → IDF v6.1 cleanup NULL-deref panic (reason 4), guarded via `sd_dma_headroom()` on all SD callers; (2) hardware — PC USB 5 V sag under the tap load spike → POWERON reset (reason 1), mitigated in software by ramping the backlight up over 150 ms and deferring the SD scan 800 ms past the entry redraw. Wall-charger verified; PC-USB re-verification pending owner. |
+| Settings-tap reset | Resolved 2026-09-28 | Two stacked failure modes, both fixed: (1) software — SD command priv-buffer alloc fail → IDF v6.1 cleanup NULL-deref panic (reason 4), guarded via `sd_dma_headroom()` on all SD callers; (2) hardware — PC USB 5 V sag under the tap load spike → POWERON reset (reason 1), mitigated in software by ramping the backlight up over 150 ms and deferring the SD scan 800 ms past the entry redraw. Wall-charger verified; PC-USB owner-verified 2026-10-02 — fix confirmed, item CLOSED, software complete. |
 | Settings scroll | Physics-bound, OWNER-ACCEPTED (2026-10-01) | ~13 fps full-screen cap is the hardware ceiling (30 MHz shared-SPI bus; 40 MHz corrupts on this wiring). Root causes fixed across Sep sessions; owner has accepted the limit. No VSCSAD hardware-scroll project — do not reopen. |
 
 ---
