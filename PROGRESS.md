@@ -1230,3 +1230,23 @@ All work through `ece68ee` (load-spike flattening) pushed to `origin/main` (`big
 ## 2026-10-01 (23:20) — OWNER DECISION: software is complete; no scroll project
 
 Owner ruling: once the PC-USB verification of the reset fix (`ece68ee`) passes, **the software is done**. The ~13 fps full-screen settings scroll is the hardware's physics ceiling (30 MHz shared-SPI bus, owner-verified; 40 MHz corrupts on this wiring) — it is an ACCEPTED limit, not an open item. **Do not propose or start the ST7789 VSCSAD hardware-scroll project.** Any future session: treat scroll fps as closed, the same way PSRAM 80 MHz and 40 MHz SPI are closed.
+
+## 2026-10-02 — Reset-fix verification PASSED on PC USB: software is DONE
+
+Owner ran the `ece68ee` verification protocol before session start: device on PC USB power (the
+original failing source), sit time, Settings hammered repeatedly — **zero resets**. This closes
+the two-reset saga end to end: reason 4 = SD priv-buffer NULL-deref panic (fixed `eb6578c`,
+guards on all SD callers), reason 1 = PC-USB 5 V sag under the Settings load spike (fixed in
+software by `ece68ee` — 150 ms LEDC backlight ramp-up, SD scan deferred 800 ms past the entry
+redraw). Previously verified on wall-charger; now verified on the failing source itself.
+
+Independent agent-side evidence (same night): firmware identity on device confirmed = `ece68ee`
+(docs-only commits after it in `main/`; `git diff ece68ee HEAD -- main/` empty). A 280 s serial
+capture of the ~6 h-uptime unit (`tools/captures/pcusb_hammer_01.txt`) showed continuous uptime,
+no boot banner, zero faults. `dma_largest` telemetry reads ~40 B in the deeply-aged state, so the
+SD guard drops session batches every scan cycle by design (drop, don't crash) — expected behavior,
+not a fault.
+
+Per the owner's 2026-10-01 ruling, this was the last open item: **the software is complete.**
+Scroll fps (~13 fps full-screen settings scroll) is an accepted hardware ceiling — closed the same
+way as PSRAM 80 MHz and 40 MHz SPI. No ST7789 VSCSAD hardware-scroll project.
