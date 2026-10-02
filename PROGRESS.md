@@ -1212,3 +1212,15 @@ Owner rejection of the "wall-charger workaround" was correct — the fix is to f
 - **Staggered SD scan** (`ui_settings.cpp`): the settings-entry session scan moved from `lv_async_call` (immediately after first paint) to a one-shot LVGL timer at +800 ms, so the card's draw lands past the redraw surge and the backlight ramp.
 
 Owner verification pending: back on PC USB power (the original failing source), let it sit, hammer Settings.
+
+---
+
+## 2026-10-01 — Session close: full push to GitHub, owner testing next
+
+All work through `ece68ee` (load-spike flattening) pushed to `origin/main` (`bigjoe420/SiteSurvey-Pro`) as the solid backup. Working tree clean at close.
+
+**State at handoff:**
+- FIXED this cycle: SD priv-buffer NULL-deref panic (guards on all SD callers, `sd_dma_headroom()`), alert flood cooldown, `report_export` leak, per-event log floods, capture tool RTS reset bug, reset-reason + `dma_largest` telemetry.
+- SHIPPED, owner-verification PENDING: load-spike flattening (`ece68ee` — 150 ms backlight ramp-up, SD scan deferred 800 ms). Test protocol: power from PC USB (the original failing source), let it sit, hammer Settings. Reason line distinguishes any residual reset: 4 = software panic, 1 = power, 9 = brownout.
+- NEXT PROJECT when owner is ready: ST7789 VSCSAD hardware scroll — the only real fix for the ~13 fps full-screen settings scroll cap.
+- Housekeeping debt: ROADMAP.md/KIMI.md still reference `D:\SiteSurvey Pro` and IDF v6.0.1; reality is `C:\Development\SiteSurvey Pro` + ESP-IDF v6.1 (`python idf_run.py build/flash`, device COM3).
