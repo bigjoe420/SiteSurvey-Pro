@@ -257,11 +257,6 @@ static void do_refresh(void)
     }
 }
 
-static void refresh(lv_timer_t*)
-{
-    do_refresh();
-}
-
 // -----------------------------------------------------------------------------
 // Screen construction
 // -----------------------------------------------------------------------------
@@ -325,7 +320,7 @@ lv_obj_t* ui_spectrum_create(void)
     lv_obj_set_pos(s_total_lbl, 8, 210);
     s_footer[0] = '\0';
 
-    s_timer = lv_timer_create(refresh, 5000, nullptr);
+    s_timer = lv_timer_create([](lv_timer_t*) { do_refresh(); }, 5000, nullptr);
     return scr;
 }
 

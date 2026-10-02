@@ -68,6 +68,16 @@ static void populate_chart(void)
     lv_chart_refresh(s_chart);
 }
 
+// Info line — channel, current RSSI, auth mode
+static void set_info_label(const WifiApInfo_t* info)
+{
+    if (!s_info) return;
+    char buf[80];
+    snprintf(buf, sizeof(buf), "Ch %u  |  %d dBm  |  %s  |  ~5 min window",
+             info->channel, info->rssi, scan_engine_auth_str(info->authmode));
+    lv_label_set_text(s_info, buf);
+}
+
 static void detail_refresh(lv_timer_t*)
 {
     if (!s_visible) return;
@@ -155,10 +165,7 @@ lv_obj_t* ui_wifi_detail_create(const WifiApInfo_t* info, lv_event_cb_t back_cb)
     lv_obj_set_style_text_color(s_info, lv_color_hex(ui_theme()->label), 0);
     lv_obj_align(s_info, LV_ALIGN_BOTTOM_MID, 0, -8);
 
-    static char info_buf[80];
-    snprintf(info_buf, sizeof(info_buf), "Ch %u  |  %d dBm  |  %s  |  ~5 min window",
-             info->channel, info->rssi, scan_engine_auth_str(info->authmode));
-    lv_label_set_text(s_info, info_buf);
+    set_info_label(info);
 
     // Refresh timer — every 2 s to pull new history samples
     s_timer = lv_timer_create(detail_refresh, 2000, nullptr);
@@ -181,11 +188,7 @@ void ui_wifi_detail_update(const WifiApInfo_t* info)
     }
 
     populate_chart();
-
-    static char info_buf[80];
-    snprintf(info_buf, sizeof(info_buf), "Ch %u  |  %d dBm  |  %s  |  ~5 min window",
-             info->channel, info->rssi, scan_engine_auth_str(info->authmode));
-    lv_label_set_text(s_info, info_buf);
+    set_info_label(info);
 }
 
 void ui_wifi_detail_set_visible(bool visible)

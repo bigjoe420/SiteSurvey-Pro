@@ -12,5 +12,3 @@ esp_err_t display_init(esp_lcd_panel_handle_t* out_panel);
 // Register a callback that fires when an async DMA color transfer completes.
 // This lets lvgl_port signal LVGL that the flush is done without blocking.
 esp_err_t display_register_flush_done_cb(esp_lcd_panel_io_color_trans_done_cb_t cb, void* user_ctx);
-
-void display_set_backlight(bool on);

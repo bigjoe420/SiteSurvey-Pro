@@ -209,11 +209,6 @@ static void do_refresh(void)
     }
 }
 
-static void refresh(lv_timer_t*)
-{
-    do_refresh();
-}
-
 static void back_cb(lv_event_t*)
 {
     ui_home_load();
@@ -272,7 +267,7 @@ lv_obj_t* ui_ble_create(void)
     lv_obj_set_style_text_font(s_status_lbl, &lv_font_montserrat_14, 0);
     lv_obj_align(s_status_lbl, LV_ALIGN_TOP_MID, 0, 36);
 
-    s_timer = lv_timer_create(refresh, 3000, nullptr);
+    s_timer = lv_timer_create([](lv_timer_t*) { do_refresh(); }, 3000, nullptr);
     return scr;
 }
 

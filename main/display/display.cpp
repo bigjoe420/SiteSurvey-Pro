@@ -1,7 +1,6 @@
 #include "display.h"
 
 #include "board_pins.h"
-#include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include "esp_check.h"
 #include "esp_heap_caps.h"
@@ -124,9 +123,4 @@ esp_err_t display_register_flush_done_cb(esp_lcd_panel_io_color_trans_done_cb_t 
     esp_lcd_panel_io_callbacks_t cbs = {};
     cbs.on_color_trans_done = cb;
     return esp_lcd_panel_io_register_event_callbacks(s_io, &cbs, user_ctx);
-}
-
-void display_set_backlight(bool on)
-{
-    gpio_set_level(SSP_TFT_BL, on ? 1 : 0);
 }
