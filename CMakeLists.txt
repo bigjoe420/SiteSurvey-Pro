@@ -1,6 +1,6 @@
 # =============================================================================
 # SiteSurvey Pro — Root CMakeLists.txt
-# ESP-IDF v5.x project for NM-CYD-C5 (ESP32-C5 RISC-V)
+# ESP-IDF v6.1 project for Guition NM-CYD-C5 (ESP32-C5 RISC-V)
 # =============================================================================
 
 cmake_minimum_required(VERSION 3.16)
