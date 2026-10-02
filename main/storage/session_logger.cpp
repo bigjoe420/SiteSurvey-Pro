@@ -7,6 +7,8 @@
 #include <sys/stat.h>
 #include "sd_card.h"
 #include "session_csv.h"
+#include "scan_engine.h"
+#include "ssp_timefmt.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -40,50 +42,10 @@ static TickType_t s_last_flush;
 static GpsState s_last_fix = {};
 
 // Format BSSID as AA:BB:CC:DD:EE:FF
-
-// Format BSSID as AA:BB:CC:DD:EE:FF
 static void fmt_mac(char* out, const uint8_t* b)
 {
     snprintf(out, 18, "%02X:%02X:%02X:%02X:%02X:%02X",
              b[0], b[1], b[2], b[3], b[4], b[5]);
-}
-
-// Build a YYYY-MM-DD HH:MM:SS timestamp.  If gps is valid, override the
-// time portion with GPS HHMMSS so the log stays correct even when the
-// system clock has no real-world source (no SNTP yet).
-static void fmt_ts(char* out, size_t n, const GpsState* gps)
-{
-    time_t now = time(nullptr);
-    struct tm tm;
-    localtime_r(&now, &tm);
-
-    if (gps && gps->fix_valid && gps->utc_hhmmss > 0) {
-        uint32_t t = gps->utc_hhmmss;
-        int hh = t / 10000;
-        int mm = (t / 100) % 100;
-        int ss = t % 100;
-        snprintf(out, n, "%04d-%02d-%02d %02d:%02d:%02d",
-                 tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-                 hh, mm, ss);
-    } else {
-        strftime(out, n, "%Y-%m-%d %H:%M:%S", &tm);
-    }
-}
-
-static const char* fmt_auth(wifi_auth_mode_t mode)
-{
-    switch (mode) {
-    case WIFI_AUTH_OPEN:            return "Open";
-    case WIFI_AUTH_WEP:             return "WEP";
-    case WIFI_AUTH_WPA_PSK:         return "WPA";
-    case WIFI_AUTH_WPA2_PSK:        return "WPA2";
-    case WIFI_AUTH_WPA_WPA2_PSK:    return "WPA/WPA2";
-    case WIFI_AUTH_WPA2_ENTERPRISE: return "WPA2-Ent";
-    case WIFI_AUTH_WPA3_PSK:        return "WPA3";
-    case WIFI_AUTH_WPA2_WPA3_PSK:   return "WPA2/WPA3";
-    case WIFI_AUTH_OWE:             return "OWE";
-    default:                        return "Other";
-    }
 }
 
 static void sync_dir_entry(void)
@@ -225,7 +187,7 @@ void session_logger_log_ap(const ScanResult_t* ap, const GpsState* gps)
     fmt_ts(e->ts, sizeof(e->ts), gps);
     fmt_mac(e->mac, ap->bssid);
     snprintf(e->ssid, sizeof(e->ssid), "%s", (const char*)ap->ssid);
-    snprintf(e->auth, sizeof(e->auth), "%s", fmt_auth(ap->authmode));
+    snprintf(e->auth, sizeof(e->auth), "%s", scan_engine_auth_str(ap->authmode));
     e->channel = ap->channel;
     e->rssi    = ap->rssi;
     if (gps && gps->fix_valid) {

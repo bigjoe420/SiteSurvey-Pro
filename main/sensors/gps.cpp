@@ -142,8 +142,8 @@ void gps_poll(GpsState* st)
                 txt[i] = isprint(buf[i]) ? (char)buf[i] : '.';
             }
             txt[n] = 0;
-            ESP_LOGI(TAG, "rx chunk[%d] hex: %s", n, hex);
-            ESP_LOGI(TAG, "rx chunk[%d] asc: %s", n, txt);
+            ESP_LOGD(TAG, "rx chunk[%d] hex: %s", n, hex);
+            ESP_LOGD(TAG, "rx chunk[%d] asc: %s", n, txt);
         }
     }
     for (int i = 0; i < n; i++) {
