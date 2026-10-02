@@ -390,10 +390,9 @@ static void sess_open_cb(lv_event_t*)
     lv_obj_clean(s_sess_list);
     lv_obj_scroll_to_y(s_sess_list, 0, LV_ANIM_OFF);
     s_sess_count = csv_list_sessions(s_sess_files, SESS_MAX);
-    ESP_LOGI("settings", "picker scan: %d sessions in %lu ms",
+    ESP_LOGI("settings", "session picker: scan -> %d sessions (%lu ms)",
              s_sess_count, (unsigned long)(esp_log_timestamp() - t0));
     bool sd_error = s_sess_count < 0;
-    ESP_LOGI("settings", "session picker: scan -> %d sessions", s_sess_count);
     if (sd_error) s_sess_count = 0;   // keep the row loop safe
 
     for (int i = 0; i < s_sess_count; i++) {
@@ -1134,17 +1133,17 @@ static lv_obj_t* make_target_row(lv_obj_t* parent, int y, lv_event_cb_t edit_cb,
     lv_obj_set_style_radius(row, 2, 0);
     lv_obj_set_style_pad_all(row, 2, 0);
 
-    // Label (NOT clickable � prevents scroll-vs-tap confusion)
+    // Label (NOT clickable — prevents scroll-vs-tap confusion)
     lv_obj_t* lbl = lv_label_create(row);
     if (lbl) {
         lv_label_set_text(lbl, "---");
         lv_obj_set_style_text_font(lbl, &lv_font_montserrat_14, 0);
         lv_obj_set_style_text_color(lbl, lv_color_hex(ui_theme()->text), 0);
         lv_obj_set_pos(lbl, 4, 2);
-        // Do NOT add CLICKABLE � label must not compete with panel scroll
+        // Do NOT add CLICKABLE — label must not compete with panel scroll
     }
 
-    // Edit button � dedicated tap target, keeps row body scroll-safe
+    // Edit button — dedicated tap target, keeps row body scroll-safe
     lv_obj_t* edit = lv_btn_create(row);
     if (edit) {
         lv_obj_set_size(edit, 28, 20);
@@ -1243,10 +1242,6 @@ lv_obj_t* ui_settings_create(void)
         // OFF so the list no longer bounces back at the edges (that bounce,
         // not momentum, was the historical complaint).
         lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLL_MOMENTUM);
-        lv_obj_set_scroll_dir(s_panel, LV_DIR_VER);
-        lv_obj_set_scrollbar_mode(s_panel, LV_SCROLLBAR_MODE_OFF);
-        lv_obj_set_scroll_snap_y(s_panel, LV_SCROLL_SNAP_NONE);
-        lv_obj_add_flag(s_panel, LV_OBJ_FLAG_SCROLLABLE);
     }
 
     int y = 0;
@@ -1289,7 +1284,7 @@ lv_obj_t* ui_settings_create(void)
             lv_obj_set_style_text_font(s_lbl_rssi, &lv_font_montserrat_14, 0);
             lv_obj_set_style_text_color(s_lbl_rssi, lv_color_hex(ui_theme()->text), 0);
             lv_obj_set_pos(s_lbl_rssi, 140, y + 6);
-            // Label no longer clickable � use +/- buttons or keyboard modal
+            // Label no longer clickable — use +/- buttons or keyboard modal
             // to prevent scroll interference on the panel
         }
 
@@ -2239,9 +2234,6 @@ void ui_settings_set_visible(bool visible)
                         800, nullptr);
 
         // Reset scroll state for smooth entry
-        if (s_panel) {
-            lv_obj_scroll_to_y(s_panel, 0, LV_ANIM_OFF);
-        }
         if (s_panel) {
             lv_obj_update_layout(s_panel);
             lv_obj_scroll_to_y(s_panel, 0, LV_ANIM_OFF);
