@@ -1,6 +1,6 @@
 // =============================================================================
 // SiteSurvey Pro — Application Entry Point
-// NM-CYD-C5 (ESP32-C5 RISC-V) + ESP-IDF v5.x
+// NM-CYD-C5 (ESP32-C5 RISC-V) + ESP-IDF v6.1
 // =============================================================================
 
 #include <cstdio>

@@ -4,5 +4,5 @@
 param([Parameter(ValueFromRemainingArguments=$true)][string[]]$Cmd)
 $env:IDF_PYTHON_ENV_PATH = 'C:\Users\joeky\.espressif\python_env\idf6.1_py3.13_env'
 . 'C:\esp\v6.1\esp-idf\export.ps1' | Out-Null
-Set-Location 'D:\SiteSurvey Pro'
+Set-Location 'C:\Development\SiteSurvey Pro'
 & $Cmd[0] @($Cmd | Select-Object -Skip 1)
