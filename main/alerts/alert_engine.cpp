@@ -1,6 +1,7 @@
 #include "alert_engine.h"
 #include "led_rgb.h"
 #include "flash_broker.h"
+#include "ssp_timefmt.h"
 
 #include <cstdio>
 #include <cstring>
@@ -22,28 +23,6 @@ static int s_log_count = 0;  // valid entries (0 … ALERT_MAX_LOG_ENTRIES)
 static portMUX_TYPE s_log_mux = portMUX_INITIALIZER_UNLOCKED;
 
 // ---------------------------------------------------------------------------
-// Timestamp helper (same logic as session_logger)
-// ---------------------------------------------------------------------------
-static void fmt_ts(char* out, size_t n, const GpsState* gps)
-{
-    time_t now = time(nullptr);
-    struct tm tm;
-    localtime_r(&now, &tm);
-
-    if (gps && gps->fix_valid && gps->utc_hhmmss > 0) {
-        uint32_t t = gps->utc_hhmmss;
-        int hh = t / 10000;
-        int mm = (t / 100) % 100;
-        int ss = t % 100;
-        snprintf(out, n, "%04d-%02d-%02d %02d:%02d:%02d",
-                 tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday,
-                 hh, mm, ss);
-    } else {
-        strftime(out, n, "%Y-%m-%d %H:%M:%S", &tm);
-    }
-}
-
-// ---------------------------------------------------------------------------
 // NVS persistence
 // ---------------------------------------------------------------------------
 static void load_defaults(void)
@@ -51,9 +30,7 @@ static void load_defaults(void)
     memset(&s_cfg, 0, sizeof(s_cfg));
     s_cfg.enabled = true;
     s_cfg.rssi_threshold = -80;
-    // Demo target: FLEETNAV (visible in your environment)
-    strncpy(s_cfg.ssid_targets[0], "FLEETNAV", sizeof(s_cfg.ssid_targets[0]) - 1);
-    s_cfg.ssid_count = 1;
+    s_cfg.ssid_count = 0;  // no targets until the user configures them
 }
 
 static esp_err_t nvs_load(void)
