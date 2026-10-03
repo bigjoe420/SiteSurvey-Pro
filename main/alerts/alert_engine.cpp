@@ -14,7 +14,6 @@ static const char* TAG = "alert";
 static const char* NVS_NS = "alert_cfg";
 
 static AlertConfig_t s_cfg;
-static QueueHandle_t s_queue;
 
 // Circular log buffer for on-screen display
 static AlertEntry_t s_log[ALERT_MAX_LOG_ENTRIES];
@@ -53,6 +52,17 @@ static esp_err_t nvs_load(void)
         load_defaults();
         return ESP_OK;
     }
+    // The size check only proves the struct shape — a torn flash word could
+    // still hold insane internal counts, and those index the fixed target
+    // arrays. Clamp every count that bounds a loop, force-terminate every
+    // target string so strcasecmp can't run off the end, and keep the RSSI
+    // threshold in the physical range so garbage can't alert on every AP.
+    if (s_cfg.ssid_count > ALERT_MAX_SSID_TARGETS)  s_cfg.ssid_count  = ALERT_MAX_SSID_TARGETS;
+    if (s_cfg.bssid_count > ALERT_MAX_BSSID_TARGETS) s_cfg.bssid_count = ALERT_MAX_BSSID_TARGETS;
+    if (s_cfg.rssi_threshold > -30)  s_cfg.rssi_threshold = -30;
+    if (s_cfg.rssi_threshold < -100) s_cfg.rssi_threshold = -100;
+    for (int i = 0; i < ALERT_MAX_SSID_TARGETS; i++)  s_cfg.ssid_targets[i][32] = 0;
+    for (int i = 0; i < ALERT_MAX_BSSID_TARGETS; i++) s_cfg.bssid_targets[i][17] = 0;
     ESP_LOGI(TAG, "config loaded from NVS");
     return ESP_OK;
 }
@@ -74,20 +84,12 @@ static esp_err_t nvs_save(void)
 
 esp_err_t alert_engine_init(void)
 {
-    s_queue = xQueueCreate(ALERT_QUEUE_DEPTH, sizeof(AlertEntry_t));
-    if (!s_queue) return ESP_ERR_NO_MEM;
-
     esp_err_t err = nvs_load();
     if (err != ESP_OK) load_defaults();
 
     ESP_LOGI(TAG, "alert engine up: enabled=%d ssid_count=%u rssi_th=%d",
              s_cfg.enabled, s_cfg.ssid_count, s_cfg.rssi_threshold);
     return ESP_OK;
-}
-
-QueueHandle_t alert_queue(void)
-{
-    return s_queue;
 }
 
 const AlertConfig_t* alert_config_get(void)
@@ -104,8 +106,19 @@ static void nvs_save_tramp(void*)
 
 esp_err_t alert_config_set(const AlertConfig_t* cfg)
 {
+    // Clamp the same fields nvs_load clamps — this API takes a struct from
+    // the UI layer, and a bad caller must not be able to seed OOB reads
+    // into the matching loops via persisted config.
+    AlertConfig_t tmp = *cfg;
+    if (tmp.ssid_count > ALERT_MAX_SSID_TARGETS)  tmp.ssid_count  = ALERT_MAX_SSID_TARGETS;
+    if (tmp.bssid_count > ALERT_MAX_BSSID_TARGETS) tmp.bssid_count = ALERT_MAX_BSSID_TARGETS;
+    if (tmp.rssi_threshold > -30)  tmp.rssi_threshold = -30;
+    if (tmp.rssi_threshold < -100) tmp.rssi_threshold = -100;
+    for (int i = 0; i < ALERT_MAX_SSID_TARGETS; i++)  tmp.ssid_targets[i][32] = 0;
+    for (int i = 0; i < ALERT_MAX_BSSID_TARGETS; i++) tmp.bssid_targets[i][17] = 0;
+
     taskENTER_CRITICAL(&s_log_mux);
-    s_cfg = *cfg;
+    s_cfg = tmp;
     taskEXIT_CRITICAL(&s_log_mux);
     // NVS commit erases/writes flash; callers (UI task) have PSRAM stacks,
     // unreachable while the cache is down — run the write on the broker task.
@@ -209,7 +222,6 @@ void alert_check(const ScanResult_t* ap, const GpsState* gps)
 
     if (matched) {
         log_alert(&e);
-        xQueueSend(s_queue, &e, 0);  // non-blocking; drop if queue full
         // Throttle the visible/expensive side effects: a parked target in
         // scan range re-matches on every sweep (~10/s), and each hit was
         // flashing the LED + logging at INFO. The ring buffer keeps every
