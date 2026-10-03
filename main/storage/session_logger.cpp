@@ -187,6 +187,13 @@ void session_logger_log_ap(const ScanResult_t* ap, const GpsState* gps)
     fmt_ts(e->ts, sizeof(e->ts), gps);
     fmt_mac(e->mac, ap->bssid);
     snprintf(e->ssid, sizeof(e->ssid), "%s", (const char*)ap->ssid);
+    // SSIDs are attacker-controlled: a hostile AP can broadcast commas,
+    // quotes, or a leading '=' to break CSV columns or smuggle a formula
+    // into a spreadsheet. Neutralise anything outside plain printable text.
+    for (char* p = e->ssid; *p; p++) {
+        unsigned char c = (unsigned char)*p;
+        if (c < 0x20 || c == ',' || c == '"' || c == '=') *p = '.';
+    }
     snprintf(e->auth, sizeof(e->auth), "%s", scan_engine_auth_str(ap->authmode));
     e->channel = ap->channel;
     e->rssi    = ap->rssi;
