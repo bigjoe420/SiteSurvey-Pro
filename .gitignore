@@ -84,6 +84,11 @@ sessions-backup-*/
 /survey_*.kml
 
 # -----------------------------------------------------------------------------
+# Raw media sources (processed copies live in docs/assets/, README renders those)
+# -----------------------------------------------------------------------------
+Images graphics gif/
+
+# -----------------------------------------------------------------------------
 # Documentation (keep structure, ignore generated)
 # -----------------------------------------------------------------------------
 # Keep docs/ folder but ignore downloaded/generated files if needed

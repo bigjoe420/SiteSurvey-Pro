@@ -32,6 +32,10 @@ static int32_t nmea_coord(const char* field, char hemi)
 {
     if (!field[0]) return 0;
     double raw = strtod(field, nullptr);
+    // A checksum-valid sentence can still carry garbage (or an absurd digit
+    // run -> HUGE_VAL/NaN). Reject anything outside plausible ddmm range
+    // before the double->int32 conversion, which is UB out of range.
+    if (!(raw >= 0.0) || raw > 18000.0) return 0;
     int deg = (int)(raw / 100.0);
     double dec = deg + (raw - deg * 100.0) / 60.0;
     if (hemi == 'S' || hemi == 'W') dec = -dec;
@@ -138,6 +142,9 @@ void gps_poll(GpsState* st)
             char txt[132];
             int off = 0;
             for (int i = 0; i < n; i++) {
+                // Guard the running offset: a wrapped (size_t) length would
+                // turn snprintf's bound into an overflow.
+                if (off + 4 > (int)sizeof(hex)) break;
                 off += snprintf(hex + off, sizeof(hex) - off, "%02X ", buf[i]);
                 txt[i] = isprint(buf[i]) ? (char)buf[i] : '.';
             }
