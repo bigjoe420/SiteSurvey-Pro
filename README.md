@@ -3,7 +3,7 @@
 > Standalone dual-band Wi-Fi 6 site-survey and RF diagnostics tool, built
 > entirely in C on ESP-IDF + FreeRTOS + LVGL — no laptop, no cloud, no phone app.
 
-![SiteSurvey Pro home screen on the Guition NM-CYD-C5](docs/assets/hero.jpg)
+![SiteSurvey Pro booting — LVGL splash on the NM-CYD-C5](docs/assets/demo.gif)
 
 **Board:** Guition **NM-CYD-C5** — ESP32-C5 development board with a 2.8" ST7789
 touchscreen (ESP32-C5-WROOM-1 module, 16 MB flash, 8 MB PSRAM).
@@ -24,8 +24,8 @@ Source: https://github.com/RockBase-iot/NM-CYD-C5
 | **OTA updates** | Flash new firmware from the SD card, no cable required. |
 | **Pure C, no IDE** | ESP-IDF v6.1, FreeRTOS task-per-subsystem, LVGL 9 on a shared SPI bus. |
 
-<!-- Boot-to-splash demo (22 frames, device capture) — lives at docs/assets/demo.gif -->
-![SiteSurvey Pro booting — LVGL splash on the NM-CYD-C5](docs/assets/demo.gif)
+<!-- Boot-to-splash demo GIF lives at the top of this README -->
+![SiteSurvey Pro home screen on the Guition NM-CYD-C5](docs/assets/hero.jpg)
 
 ## Hardware Setup
 
