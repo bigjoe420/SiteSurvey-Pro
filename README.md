@@ -3,9 +3,7 @@
 > Standalone dual-band Wi-Fi 6 site-survey and RF diagnostics tool, built
 > entirely in C on ESP-IDF + FreeRTOS + LVGL — no laptop, no cloud, no phone app.
 
-<!-- MEDIA: hero shot of the NM-CYD-C5 running the LVGL UI — uncomment when docs/assets/hero.jpg lands
-![SiteSurvey Pro running on the Guition NM-CYD-C5](docs/assets/hero.jpg)
--->
+![SiteSurvey Pro home screen on the Guition NM-CYD-C5](docs/assets/hero.jpg)
 
 **Board:** Guition **NM-CYD-C5** — ESP32-C5 development board with a 2.8" ST7789
 touchscreen (ESP32-C5-WROOM-1 module, 16 MB flash, 8 MB PSRAM).
@@ -57,6 +55,13 @@ bus — nothing to wire there. Two optional sensors plug into the board's header
 | **BME680 (CN1)** | SCL | 8 | I²C 100 kHz |
 | | SDA | 9 | |
 | **RGB LED** | Data | 27 | WS2812, GRB |
+
+## Gallery
+
+| Bluetooth survey | Evil-twin detection in the field | Hardware rig |
+|---|---|---|
+| ![BLE device list with per-device RSSI](docs/assets/gallery-ble.jpg) | ![Wi-Fi list flagging rogue APs sharing an SSID](docs/assets/gallery-wifi.jpg) | ![NM-CYD-C5 with GPS and BME680 wired to the P5/CN1 headers](docs/assets/gallery-rig.jpg) |
+| BLE observer mode — MAC, name fragment, live dBm per device. | Two `FLEETNAV` APs on the same SSID flagged as a potential evil twin, BME680 overlay on top. | Full rig: board on USB power, GPS module on P5, BME680 on CN1. |
 
 ## Installation
 
@@ -147,7 +152,7 @@ SiteSurvey-Pro/
 │   ├── power/ led/ flash/      # Power manager, WS2812 LED, flash broker
 │   └── display/ touch/         # ST7789 panel, XPT2046 touch
 ├── docs/
-│   ├── assets/                 # README media (hero.jpg, demo.gif) ← drop here
+│   ├── assets/                 # README media (hero, demo.gif, gallery-*)
 │   └── datasheets/             # Hardware datasheets
 └── tools/                      # Build/flash helpers + diagnostic scripts
 ```
