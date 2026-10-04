@@ -1,0 +1,6 @@
+# Route question-type traffic to Discussions so issues stay actionable.
+blank_issues_enabled: false
+contact_links:
+  - name: Questions, ideas, show-and-tell
+    url: https://github.com/bigjoe420/SiteSurvey-Pro/discussions
+    about: Setup help, feature ideas, survey results — everything that isn't a bug.

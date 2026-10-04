@@ -1,0 +1,58 @@
+name: Bug Report
+description: Something is wrong with the firmware, the build, or the repo
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report. For questions, ideas, or
+        show-and-tell, please use [Discussions](https://github.com/bigjoe420/SiteSurvey-Pro/discussions)
+        instead.
+
+  - type: input
+    id: version
+    attributes:
+      label: Firmware version
+      description: Shown on the Settings screen under *Firmware*, or the release tag you flashed.
+      placeholder: e.g. v1.0.0
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      description: Board and any add-ons wired up.
+      placeholder: e.g. NM-CYD-C5, GPS on P5, BME680 on CN1
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you expected vs. what actually happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Power on from USB
+        2. Open Wi-Fi screen
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Serial log / reset reason
+      description: |
+        `idf.py monitor` (or any serial terminal @ 115200) output around the
+        failure. If the device resets on its own, the boot line classifies it:
+        `reason 4` = software panic, `1` = power, `9` = brownout.
+      render: shell
