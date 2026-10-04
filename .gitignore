@@ -89,6 +89,11 @@ sessions-backup-*/
 Images graphics gif/
 
 # -----------------------------------------------------------------------------
+# Release staging (bundles are uploaded to GitHub Releases, not committed)
+# -----------------------------------------------------------------------------
+release/
+
+# -----------------------------------------------------------------------------
 # Documentation (keep structure, ignore generated)
 # -----------------------------------------------------------------------------
 # Keep docs/ folder but ignore downloaded/generated files if needed
