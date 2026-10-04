@@ -1,0 +1,16 @@
+{
+  "name": "SiteSurvey Pro",
+  "version": "v1.0.0",
+  "new_install_prompt_erase": true,
+  "new_install_improv_wait_time": 0,
+  "builds": [
+    {
+      "chipFamily": "ESP32-C5",
+      "parts": [
+        { "path": "firmware/bootloader.bin", "offset": 8192 },
+        { "path": "firmware/partition-table.bin", "offset": 32768 },
+        { "path": "firmware/SiteSurvey-Pro.bin", "offset": 65536 }
+      ]
+    }
+  ]
+}

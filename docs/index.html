@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SiteSurvey Pro — Web Installer</title>
+<meta name="description" content="Flash SiteSurvey Pro firmware to the Guition NM-CYD-C5 (ESP32-C5) straight from your browser.">
+<script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+<style>
+  :root {
+    --bg: #0d1117;
+    --panel: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --dim: #8b949e;
+    --accent: #3fb950;
+    --accent-hover: #56d364;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    display: flex;
+    justify-content: center;
+    padding: 48px 16px 64px;
+  }
+  main { width: 100%; max-width: 640px; }
+  header { text-align: center; margin-bottom: 32px; }
+  h1 {
+    font-family: var(--mono);
+    font-size: 1.75rem;
+    letter-spacing: 0.5px;
+    margin: 0 0 6px;
+  }
+  .sub { color: var(--dim); margin: 0; }
+  .ver {
+    display: inline-block;
+    margin-top: 12px;
+    padding: 2px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    color: var(--accent);
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 32px;
+    margin-bottom: 24px;
+  }
+  .install { text-align: center; }
+  esp-web-install-button {
+    --esp-tools-button-color: var(--accent);
+    --esp-tools-button-text-color: #0d1117;
+    --esp-tools-button-border-radius: 8px;
+  }
+  .flash-btn {
+    font: 600 1.05rem/1 -apple-system, "Segoe UI", sans-serif;
+    background: var(--accent);
+    color: #0d1117;
+    border: 0;
+    border-radius: 8px;
+    padding: 16px 40px;
+    cursor: pointer;
+  }
+  .flash-btn:hover { background: var(--accent-hover); }
+  .note {
+    margin-top: 16px;
+    font-size: 0.85rem;
+    color: var(--dim);
+  }
+  h2 {
+    font-size: 0.95rem;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--dim);
+    margin: 0 0 12px;
+  }
+  ol, ul { margin: 0; padding-left: 22px; }
+  li { margin-bottom: 8px; }
+  li::marker { color: var(--accent); font-family: var(--mono); }
+  code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    background: #0d1117;
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1px 6px;
+  }
+  a { color: var(--accent); }
+  footer {
+    text-align: center;
+    color: var(--dim);
+    font-size: 0.85rem;
+    margin-top: 8px;
+  }
+  footer a { margin: 0 8px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>SiteSurvey Pro</h1>
+    <p class="sub">Web Installer &mdash; Guition NM-CYD-C5 (ESP32-C5)</p>
+    <span class="ver" id="ver">firmware v&hellip;</span>
+  </header>
+
+  <section class="card install">
+    <esp-web-install-button manifest="manifest.json">
+      <button slot="activate" class="flash-btn">Connect &amp; Flash</button>
+      <span slot="unsupported">Web Serial isn&rsquo;t available here &mdash; open this page in desktop Chrome or Edge over HTTPS.</span>
+    </esp-web-install-button>
+    <p class="note">Flashing takes about a minute. The board reboots into
+    SiteSurvey Pro when done.</p>
+  </section>
+
+  <section class="card">
+    <h2>What you need</h2>
+    <ul>
+      <li>A Guition <strong>NM-CYD-C5</strong> board and a <em>data-capable</em> USB&ndash;C cable</li>
+      <li>Desktop Chrome or Edge (Web Serial; Firefox and iOS are not supported)</li>
+      <li>Windows only: the CH340 USB&ndash;serial driver (usually already installed)</li>
+    </ul>
+  </section>
+
+  <section class="card">
+    <h2>Steps</h2>
+    <ol>
+      <li>Plug the board into your computer.</li>
+      <li>Click <strong>Connect &amp; Flash</strong> and pick the board&rsquo;s serial port.</li>
+      <li>Accept the erase prompt on a first install.</li>
+      <li>Wait for the progress bar to finish &mdash; the device resets and boots into the survey UI.</li>
+    </ol>
+  </section>
+
+  <section class="card">
+    <h2>Troubleshooting</h2>
+    <ul>
+      <li><strong>No port in the list?</strong> Re-check the cable (charge-only cables are the usual culprit) and the CH340 driver.</li>
+      <li><strong>Connect fails?</strong> Hold the <code>BOOT</code> button on the board, click Connect, release <code>BOOT</code> once flashing starts.</li>
+      <li><strong>Prefer the command line?</strong> The same binaries flash with <code>esptool.py</code> &mdash; see the README.</li>
+    </ul>
+  </section>
+
+  <footer>
+    <a href="https://github.com/bigjoe420/SiteSurvey-Pro">GitHub</a>
+    <a href="https://github.com/bigjoe420/SiteSurvey-Pro/releases">Releases</a>
+    <a href="https://github.com/bigjoe420/SiteSurvey-Pro#readme">Wiring &amp; build guide</a>
+  </footer>
+</main>
+
+<script>
+  // Show the version from the manifest so the page always matches the
+  // firmware it is actually serving.
+  fetch("manifest.json")
+    .then((r) => r.json())
+    .then((m) => { document.getElementById("ver").textContent = "firmware " + m.version; })
+    .catch(() => { document.getElementById("ver").textContent = ""; });
+</script>
+</body>
+</html>

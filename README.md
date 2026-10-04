@@ -67,10 +67,14 @@ bus — nothing to wire there. Two optional sensors plug into the board's header
 
 ### Option A — flash a release (no toolchain needed)
 
-Download the `SiteSurvey-Pro.bin` assets from the
+**Fastest: flash from your browser.** Open the
+[**web installer**](https://bigjoe420.github.io/SiteSurvey-Pro/) in Chrome or
+Edge, plug the board in, click *Connect & Flash* — done in about a minute.
+No Python, no ESP-IDF.
+
+Or manually: download the binaries from the
 [latest release](https://github.com/bigjoe420/SiteSurvey-Pro/releases), then
-either use [esptool-js](https://espressif.github.io/esptool-js/) in the browser
-or `esptool.py`:
+flash with `esptool.py`:
 
 ```bash
 esptool.py --chip esp32c5 write-flash \
