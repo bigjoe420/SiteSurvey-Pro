@@ -1,0 +1,88 @@
+# =============================================================================
+# SiteSurvey Pro — Firmware CI
+# Builds every push to main; on any v* tag it also cuts a GitHub Release with
+# the flashable binaries attached. Runs in the official ESP-IDF v6.1 image so
+# the CI binary is built by the same toolchain as a local `idf.py build`.
+# =============================================================================
+
+name: Firmware Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (ESP-IDF v6.1, esp32c5)
+    runs-on: ubuntu-latest
+    container: espressif/idf:v6.1
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify tag matches baked-in firmware version
+        # sdkconfig.defaults carries CONFIG_APP_PROJECT_VER; a tag whose number
+        # disagrees with the string the firmware reports must never ship.
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          VER=$(sed -n 's/CONFIG_APP_PROJECT_VER="\([^"]*\)"/\1/p' sdkconfig.defaults)
+          if [[ "${GITHUB_REF_NAME#v}" != "$VER" ]]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match CONFIG_APP_PROJECT_VER=$VER"
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME matches firmware version $VER"
+
+      - name: Build firmware
+        run: |
+          . "$IDF_PATH/export.sh"
+          idf.py build
+
+      - name: Stage release binaries
+        run: |
+          set -euo pipefail
+          mkdir -p release-ci
+          cp build/bootloader/bootloader.bin release-ci/
+          cp build/partition_table/partition-table.bin release-ci/
+          cp build/SiteSurvey-Pro.bin release-ci/
+          if [[ "$GITHUB_REF_TYPE" == "tag" ]]; then
+            echo "BUNDLE_NAME=SiteSurvey-Pro-${GITHUB_REF_NAME}-flash-bundle.zip" >> "$GITHUB_ENV"
+          else
+            echo "BUNDLE_NAME=SiteSurvey-Pro-${GITHUB_SHA::7}-flash-bundle.zip" >> "$GITHUB_ENV"
+          fi
+
+      - name: Bundle flashable zip
+        run: |
+          python3 - "$BUNDLE_NAME" <<'EOF'
+          import sys, os, zipfile
+          d = os.path.join(os.environ["GITHUB_WORKSPACE"], "release-ci")
+          with zipfile.ZipFile(os.path.join(d, sys.argv[1]), "w", zipfile.ZIP_DEFLATED) as z:
+              for f in ("bootloader.bin", "partition-table.bin", "SiteSurvey-Pro.bin"):
+                  z.write(os.path.join(d, f), f)
+          print("bundled", sys.argv[1])
+          EOF
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ github.ref_name }}
+          path: release-ci/
+          if-no-files-found: error
+
+      - name: Create GitHub Release (v* tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          fail_on_unmatched_files: true
+          files: |
+            release-ci/bootloader.bin
+            release-ci/partition-table.bin
+            release-ci/SiteSurvey-Pro.bin
+            release-ci/${{ env.BUNDLE_NAME }}
