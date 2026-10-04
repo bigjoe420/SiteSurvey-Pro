@@ -1,0 +1,10 @@
+# Keeps GitHub Actions references in workflows current. The firmware itself
+# pins ESP-IDF via the container tag (espressif/idf:v6.1), so only the
+# actions/* versions need watching.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+    open-pull-requests-limit: 3
